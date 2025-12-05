@@ -1,26 +1,80 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light theme - matched to Figma */
+  --background: #f6f5f1;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --primary: #ffc413;
+  --primary-foreground: #000000;
+  --muted: #000000;
+  --muted-foreground: #9ca3af;
+  --border: #ededed;
+  --input-bg: #f6f5f1;
+  --input-border: #e4e3dd;
+  --accent: #ffc413;
+}
+
+.dark {
+  --background: #1a1a1a;
+  --foreground: #f5f5f5;
+  --card: #262626;
+  --card-foreground: #f5f5f5;
+  --primary: #f5a623;
+  --primary-foreground: #1a1a1a;
+  --muted: #a3a3a3;
+  --muted-foreground: #737373;
+  --border: #404040;
+  --input-bg: #333333;
+  --accent: #f5a623;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input-bg: var(--input-bg);
+  --color-input-border: var(--input-border);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-lora);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* Background pattern - subtle NOCK watermark */
+.bg-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='400' height='400' viewBox='0 0 400 400' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Ctext x='50' y='200' font-family='serif' font-size='120' font-weight='600' fill='%23e0d6c8' opacity='0.3'%3ENOCK%3C/text%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 300px;
+}
+
+.dark .bg-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='400' height='400' viewBox='0 0 400 400' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Ctext x='50' y='200' font-family='serif' font-size='120' font-weight='600' fill='%23333333' opacity='0.3'%3ENOCK%3C/text%3E%3C/svg%3E");
+}
+
+/* Address input placeholder - muted color */
+@layer base {
+  .address-input::placeholder {
+    color: #aaa;
+    opacity: 1;
+  }
 }
