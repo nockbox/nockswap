@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePrice, formatUSD } from "@/hooks/usePrice";
 import { NOCK_COINGECKO_ID } from "@/lib/constants";
+import { isNockAddress } from "@/lib/validators";
 
 const imgNockToken = "/assets/nock-token.png";
 const imgBaseLogo = "/assets/base-logo-v2.svg";
@@ -38,6 +39,8 @@ export default function SwapCard({
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [receivingAddress, setReceivingAddress] = useState("");
+  // true = Nockchain -> Base, false = Base -> Nockchain
+  const [isNockchainToBase, setIsNockchainToBase] = useState(true);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } = usePrice(NOCK_COINGECKO_ID);
@@ -51,6 +54,17 @@ export default function SwapCard({
 
   const fromUSD = formatUSD(parseAmount(fromAmount), nockPrice);
   const toUSD = formatUSD(parseAmount(toAmount), nockPrice);
+
+  // Address validation
+  const isValidEvmAddress = (address: string): boolean => {
+    return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
+  };
+
+  const isAddressValid = receivingAddress.trim().length === 0
+    ? null // No validation state when empty
+    : isNockchainToBase
+      ? isValidEvmAddress(receivingAddress) // Receiving on Base needs EVM address
+      : isNockAddress(receivingAddress); // Receiving on Nockchain needs Nock address
 
   // Format number with commas
   const formatWithCommas = (value: string): string => {
@@ -100,6 +114,8 @@ export default function SwapCard({
     const temp = fromAmount;
     setFromAmount(toAmount);
     setToAmount(temp);
+    setIsNockchainToBase(!isNockchainToBase);
+    setReceivingAddress(""); // Clear address when direction changes
   };
 
   const handleMaxClick = () => {
@@ -676,7 +692,7 @@ export default function SwapCard({
                       letterSpacing: 0.13,
                     }}
                   >
-                    Base
+                    {isNockchainToBase ? "Base" : "Nockchain"}
                   </span>
                   <div
                     style={{
@@ -686,12 +702,12 @@ export default function SwapCard({
                       overflow: "hidden",
                       border: `2px solid ${theme.networkBadgeBorder}`,
                       boxSizing: "border-box",
-                      background: "#fff",
+                      background: isNockchainToBase ? "#fff" : "#1a1a1a",
                     }}
                   >
                     <img
-                      src={imgBaseLogo}
-                      alt="Base"
+                      src={isNockchainToBase ? imgBaseLogo : imgNockchainIcon}
+                      alt={isNockchainToBase ? "Base" : "Nockchain"}
                       style={{
                         width: "100%",
                         height: "100%",
@@ -705,11 +721,11 @@ export default function SwapCard({
                 type="text"
                 value={receivingAddress}
                 onChange={(e) => setReceivingAddress(e.target.value)}
-                placeholder="Enter your Base wallet address"
+                placeholder={isNockchainToBase ? "Enter your Base wallet address" : "Enter your Nockchain address"}
                 className="address-input"
                 style={{
                   width: "100%",
-                  color: theme.textPrimary,
+                  color: isAddressValid === false ? "#ef4444" : theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
                   fontSize: 15,
                   fontStyle: "normal",
@@ -723,6 +739,19 @@ export default function SwapCard({
                   margin: 0,
                 }}
               />
+              {isAddressValid === false && (
+                <span
+                  style={{
+                    color: "#ef4444",
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    marginTop: 4,
+                  }}
+                >
+                  {isNockchainToBase ? "Invalid Base address" : "Invalid Nockchain address"}
+                </span>
+              )}
             </div>
           </div>
         </div>
