@@ -1,31 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { usePrice, formatUSD } from "@/hooks/usePrice";
-import { NOCK_COINGECKO_ID } from "@/lib/constants";
-import { isNockAddress } from "@/lib/validators";
-
-const imgNockToken = "/assets/nock-token.png";
-const imgBaseLogo = "/assets/base-logo-v2.svg";
-const imgNockchainIcon = "/assets/nockchain-icon.svg";
-
-function PriceSkeleton({ isDarkMode }: { isDarkMode: boolean }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        width: 60,
-        height: 15,
-        borderRadius: 4,
-        background: isDarkMode
-          ? "linear-gradient(90deg, #333 25%, #444 50%, #333 75%)"
-          : "linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%)",
-        backgroundSize: "200% 100%",
-        animation: "shimmer 1.5s infinite",
-      }}
-    />
-  );
-}
+import { usePrice } from "@/hooks/usePrice";
+import { NOCK_COINGECKO_ID, ASSETS } from "@/lib/constants";
+import { isNockAddress, isEvmAddress } from "@/lib/validators";
+import { calcUSD, parseAmount, formatWithCommas } from "@/lib/utils";
+import { getSwapCardTheme } from "@/lib/theme";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -41,81 +22,51 @@ export default function SwapCard({
   const [receivingAddress, setReceivingAddress] = useState("");
   // true = Nockchain -> Base, false = Base -> Nockchain
   const [isNockchainToBase, setIsNockchainToBase] = useState(true);
+  const [showAddressError, setShowAddressError] = useState(false);
+  const [rotation, setRotation] = useState(0);
 
   // Fetch NOCK price from CoinGecko
-  const { data: priceData, isLoading: isPriceLoading } = usePrice(NOCK_COINGECKO_ID);
+  const { data: priceData, isLoading: isPriceLoading } =
+    usePrice(NOCK_COINGECKO_ID);
   const nockPrice = priceData?.usd ?? 0;
 
   // Calculate USD values from amounts
-  const parseAmount = (value: string): number => {
-    const cleaned = value.replace(/,/g, "");
-    return parseFloat(cleaned) || 0;
-  };
-
-  const fromUSD = formatUSD(parseAmount(fromAmount), nockPrice);
-  const toUSD = formatUSD(parseAmount(toAmount), nockPrice);
+  const fromUSD = calcUSD(parseAmount(fromAmount), nockPrice);
+  const toUSD = calcUSD(parseAmount(toAmount), nockPrice);
 
   // Address validation
-  const isValidEvmAddress = (address: string): boolean => {
-    return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
-  };
-
-  const isAddressValid = receivingAddress.trim().length === 0
-    ? null // No validation state when empty
-    : isNockchainToBase
-      ? isValidEvmAddress(receivingAddress) // Receiving on Base needs EVM address
+  const isAddressValid =
+    receivingAddress.trim().length === 0
+      ? null // No validation state when empty
+      : isNockchainToBase
+      ? isEvmAddress(receivingAddress) // Receiving on Base needs EVM address
       : isNockAddress(receivingAddress); // Receiving on Nockchain needs Nock address
 
-  // Format number with commas
-  const formatWithCommas = (value: string): string => {
-    // Remove existing commas and non-numeric chars except decimal
-    const cleaned = value.replace(/[^0-9.]/g, "");
-    if (!cleaned) return "";
-
-    const parts = cleaned.split(".");
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return parts.join(".");
-  };
-
   // Handle input change - allow typing with or without commas
-  const handleAmountChange = (
-    value: string,
-    setter: (val: string) => void
-  ) => {
+  const handleAmountChange = (value: string, setter: (val: string) => void) => {
     // Allow numbers, commas, and one decimal point
     const cleaned = value.replace(/[^0-9.,]/g, "");
     setter(cleaned);
   };
 
   // Format on blur
-  const handleAmountBlur = (
-    value: string,
-    setter: (val: string) => void
-  ) => {
+  const handleAmountBlur = (value: string, setter: (val: string) => void) => {
     if (value) {
       setter(formatWithCommas(value));
     }
   };
 
-  // Theme colors
-  const theme = {
-    cardBg: isDarkMode ? "#101010" : "#fff",
-    cardBorder: isDarkMode ? "#171717" : "#ededed",
-    sectionBg: isDarkMode ? "#171717" : "#f6f5f1",
-    inputBg: isDarkMode ? "#000" : "#fff",
-    textPrimary: isDarkMode ? "#fff" : "#000",
-    maxButtonBorder: isDarkMode ? "#222" : "#e4e3dd",
-    swapButtonBg: isDarkMode ? "#fff" : "#000",
-    swapButtonIcon: isDarkMode ? "#000" : "#fff",
-    networkBadgeBorder: isDarkMode ? "#171717" : "#f6f5f1",
-  };
+  const theme = getSwapCardTheme(isDarkMode);
 
   const handleSwapDirection = () => {
+    setRotation((prev) => prev + 180);
+
     const temp = fromAmount;
     setFromAmount(toAmount);
     setToAmount(temp);
     setIsNockchainToBase(!isNockchainToBase);
     setReceivingAddress(""); // Clear address when direction changes
+    setShowAddressError(false);
   };
 
   const handleMaxClick = () => {
@@ -123,10 +74,21 @@ export default function SwapCard({
   };
 
   const handleSwap = () => {
+    // Validate address before proceeding
+    if (isAddressValid === false || receivingAddress.trim().length === 0) {
+      setShowAddressError(true);
+      return;
+    }
+
     console.log("Swap initiated");
     if (onSwapSuccess) {
       onSwapSuccess();
     }
+  };
+
+  const handleAddressChange = (value: string) => {
+    setReceivingAddress(value);
+    setShowAddressError(false); // Clear error when user starts typing
   };
 
   return (
@@ -220,7 +182,9 @@ export default function SwapCard({
                 <input
                   type="text"
                   value={fromAmount}
-                  onChange={(e) => handleAmountChange(e.target.value, setFromAmount)}
+                  onChange={(e) =>
+                    handleAmountChange(e.target.value, setFromAmount)
+                  }
                   onBlur={() => handleAmountBlur(fromAmount, setFromAmount)}
                   placeholder="0"
                   style={{
@@ -294,7 +258,7 @@ export default function SwapCard({
                     }}
                   >
                     <img
-                      src={imgNockToken}
+                      src={ASSETS.nockToken}
                       alt="NOCK"
                       style={{
                         width: 40,
@@ -318,7 +282,7 @@ export default function SwapCard({
                       }}
                     >
                       <img
-                        src={imgNockchainIcon}
+                        src={ASSETS.nockchainIcon}
                         alt="Nockchain"
                         style={{
                           width: "100%",
@@ -352,10 +316,15 @@ export default function SwapCard({
                       opacity: 0.5,
                     }}
                   >
-                    ≈{isPriceLoading ? <PriceSkeleton isDarkMode={isDarkMode} /> : fromUSD}
+                    ≈
+                    {isPriceLoading ? (
+                      <Skeleton isDarkMode={isDarkMode} />
+                    ) : (
+                      fromUSD
+                    )}
                   </span>
                   <img
-                    src="/assets/up-down-arrows-2.svg"
+                    src={ASSETS.upDownArrows2}
                     alt="Price change"
                     style={{
                       width: 14,
@@ -430,12 +399,14 @@ export default function SwapCard({
             }}
           >
             <img
-              src="/assets/up-down-arrows.svg"
+              src={ASSETS.upDownArrows}
               alt="Swap"
               style={{
                 width: 24,
                 height: 24,
                 filter: isDarkMode ? "invert(1)" : "none",
+                transform: `rotate(${rotation}deg)`,
+                transition: "transform 0.3s ease-in-out",
               }}
             />
           </button>
@@ -481,7 +452,9 @@ export default function SwapCard({
                 <input
                   type="text"
                   value={toAmount}
-                  onChange={(e) => handleAmountChange(e.target.value, setToAmount)}
+                  onChange={(e) =>
+                    handleAmountChange(e.target.value, setToAmount)
+                  }
                   onBlur={() => handleAmountBlur(toAmount, setToAmount)}
                   placeholder="0"
                   style={{
@@ -555,7 +528,7 @@ export default function SwapCard({
                     }}
                   >
                     <img
-                      src={imgNockToken}
+                      src={ASSETS.nockToken}
                       alt="NOCK"
                       style={{
                         width: 40,
@@ -579,7 +552,7 @@ export default function SwapCard({
                       }}
                     >
                       <img
-                        src={imgBaseLogo}
+                        src={ASSETS.baseLogo}
                         alt="Base"
                         style={{
                           width: "100%",
@@ -613,10 +586,15 @@ export default function SwapCard({
                       opacity: 0.5,
                     }}
                   >
-                    ≈{isPriceLoading ? <PriceSkeleton isDarkMode={isDarkMode} /> : toUSD}
+                    ≈
+                    {isPriceLoading ? (
+                      <Skeleton isDarkMode={isDarkMode} />
+                    ) : (
+                      toUSD
+                    )}
                   </span>
                   <img
-                    src="/assets/up-down-arrows-2.svg"
+                    src={ASSETS.upDownArrows2}
                     alt="Price change"
                     style={{
                       width: 14,
@@ -706,7 +684,7 @@ export default function SwapCard({
                     }}
                   >
                     <img
-                      src={isNockchainToBase ? imgBaseLogo : imgNockchainIcon}
+                      src={isNockchainToBase ? ASSETS.baseLogo : ASSETS.nockchainIcon}
                       alt={isNockchainToBase ? "Base" : "Nockchain"}
                       style={{
                         width: "100%",
@@ -720,12 +698,19 @@ export default function SwapCard({
               <input
                 type="text"
                 value={receivingAddress}
-                onChange={(e) => setReceivingAddress(e.target.value)}
-                placeholder={isNockchainToBase ? "Enter your Base wallet address" : "Enter your Nockchain address"}
+                onChange={(e) => handleAddressChange(e.target.value)}
+                placeholder={
+                  isNockchainToBase
+                    ? "Enter your Base wallet address"
+                    : "Enter your Nockchain address"
+                }
                 className="address-input"
                 style={{
                   width: "100%",
-                  color: isAddressValid === false ? "#ef4444" : theme.textPrimary,
+                  color:
+                    showAddressError && isAddressValid === false
+                      ? "#ef4444"
+                      : theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
                   fontSize: 15,
                   fontStyle: "normal",
@@ -739,7 +724,7 @@ export default function SwapCard({
                   margin: 0,
                 }}
               />
-              {isAddressValid === false && (
+              {/* {showAddressError && (
                 <span
                   style={{
                     color: "#ef4444",
@@ -749,9 +734,13 @@ export default function SwapCard({
                     marginTop: 4,
                   }}
                 >
-                  {isNockchainToBase ? "Invalid Base address" : "Invalid Nockchain address"}
+                  {receivingAddress.trim().length === 0
+                    ? "Please enter a receiving address"
+                    : isNockchainToBase
+                    ? "Invalid Base address"
+                    : "Invalid Nockchain address"}
                 </span>
-              )}
+              )} */}
             </div>
           </div>
         </div>

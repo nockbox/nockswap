@@ -2,19 +2,30 @@ export const PROTOCOL_FEE_BPS = 50; // 0.5% fee
 
 export const NOCK_COINGECKO_ID = "nockchain";
 
+// Asset paths
+export const ASSETS = {
+  nockToken: "/assets/nock-token.png",
+  nockchainIcon: "/assets/nockchain-icon.svg",
+  baseLogo: "/assets/base-logo-v2.svg",
+  upDownArrows: "/assets/up-down-arrows.svg",
+  upDownArrows2: "/assets/up-down-arrows-2.svg",
+} as const;
+
 export const TOKENS = {
   NOCK_NATIVE: {
     symbol: "NOCK",
     name: "Nock",
     chain: "nockchain",
-    logo: "/images/nock-native.svg",
+    logo: ASSETS.nockToken,
+    chainIcon: ASSETS.nockchainIcon,
     coingeckoId: NOCK_COINGECKO_ID,
   },
   NOCK_BASE: {
     symbol: "NOCK",
     name: "Nock",
     chain: "base",
-    logo: "/images/nock-base.svg",
+    logo: ASSETS.nockToken,
+    chainIcon: ASSETS.baseLogo,
     coingeckoId: NOCK_COINGECKO_ID,
   },
 } as const;

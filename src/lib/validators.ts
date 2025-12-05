@@ -1,4 +1,5 @@
 import { base58 } from "@scure/base";
+import { isAddress } from "viem";
 
 /**
  * Validates a Nockchain V1 PKH address
@@ -16,4 +17,11 @@ export function isNockAddress(s: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Validates an EVM address using viem
+ */
+export function isEvmAddress(address: string): boolean {
+  return isAddress((address || "").trim());
 }
