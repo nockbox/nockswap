@@ -1,10 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import { usePrice, formatUSD } from "@/hooks/usePrice";
+import { NOCK_COINGECKO_ID } from "@/lib/constants";
 
 const imgNockToken = "/assets/nock-token.png";
 const imgBaseLogo = "/assets/base-logo-v2.svg";
 const imgNockchainIcon = "/assets/nockchain-icon.svg";
+
+function PriceSkeleton({ isDarkMode }: { isDarkMode: boolean }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: 60,
+        height: 15,
+        borderRadius: 4,
+        background: isDarkMode
+          ? "linear-gradient(90deg, #333 25%, #444 50%, #333 75%)"
+          : "linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%)",
+        backgroundSize: "200% 100%",
+        animation: "shimmer 1.5s infinite",
+      }}
+    />
+  );
+}
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -18,6 +38,19 @@ export default function SwapCard({
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [receivingAddress, setReceivingAddress] = useState("");
+
+  // Fetch NOCK price from CoinGecko
+  const { data: priceData, isLoading: isPriceLoading } = usePrice(NOCK_COINGECKO_ID);
+  const nockPrice = priceData?.usd ?? 0;
+
+  // Calculate USD values from amounts
+  const parseAmount = (value: string): number => {
+    const cleaned = value.replace(/,/g, "");
+    return parseFloat(cleaned) || 0;
+  };
+
+  const fromUSD = formatUSD(parseAmount(fromAmount), nockPrice);
+  const toUSD = formatUSD(parseAmount(toAmount), nockPrice);
 
   // Format number with commas
   const formatWithCommas = (value: string): string => {
@@ -303,7 +336,7 @@ export default function SwapCard({
                       opacity: 0.5,
                     }}
                   >
-                    ≈4998.63 USD
+                    ≈{isPriceLoading ? <PriceSkeleton isDarkMode={isDarkMode} /> : fromUSD}
                   </span>
                   <img
                     src="/assets/up-down-arrows-2.svg"
@@ -564,7 +597,7 @@ export default function SwapCard({
                       opacity: 0.5,
                     }}
                   >
-                    ≈4,996.85 USD
+                    ≈{isPriceLoading ? <PriceSkeleton isDarkMode={isDarkMode} /> : toUSD}
                   </span>
                   <img
                     src="/assets/up-down-arrows-2.svg"
