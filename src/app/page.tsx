@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import SuccessCard from "@/components/swap/SuccessCard";
+import { ASSETS } from "@/lib/constants";
 
 export default function Home() {
   const [showSuccess, setShowSuccess] = useState(false);
@@ -23,23 +25,13 @@ export default function Home() {
               textAlign: "center",
             }}
           >
-            <h1
-              style={{
-                fontFamily: "var(--font-lora), serif",
-                fontSize: 72,
-                fontWeight: 500,
-                color: theme.textPrimary,
-                lineHeight: "72px",
-                letterSpacing: -2.88,
-                textShadow: theme.titleTextShadow,
-                WebkitTextStrokeWidth: "12px",
-                WebkitTextStrokeColor: isDarkMode ? "transparent" : "#FFF",
-                paintOrder: "stroke fill",
-                margin: 0,
-              }}
-            >
-              Nock Swap
-            </h1>
+            <Image
+              src={isDarkMode ? ASSETS.nockswapHeaderDark : ASSETS.nockswapHeader}
+              alt="Nock Swap"
+              width={320}
+              height={72}
+              priority
+            />
             <p
               style={{
                 fontSize: 18,

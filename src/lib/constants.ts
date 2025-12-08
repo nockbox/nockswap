@@ -6,6 +6,8 @@ export const NOCK_COINGECKO_ID = "nockchain";
 export const ASSETS = {
   nockswapLogo: "/assets/nockswap_logo.svg",
   nockswapLogoDark: "/assets/nockswap_logo_dark.svg",
+  nockswapHeader: "/assets/nockswap-header.svg",
+  nockswapHeaderDark: "/assets/nockswap-header-dark.svg",
   nockToken: "/assets/nock-token.png",
   nockchainIcon: "/assets/nockchain-icon.svg",
   baseLogo: "/assets/base-logo-v2.svg",
