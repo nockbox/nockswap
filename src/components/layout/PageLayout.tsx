@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import LearnMoreModal from "@/components/modal/LearnMoreModal";
+import { ASSETS } from "@/lib/constants";
 
 export interface Theme {
   background: string;
@@ -149,14 +151,14 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
             zIndex: 20,
           }}
         >
-          <a href="/" style={{ width: 57, height: 60 }}>
+          <Link href="/" style={{ width: 57, height: 60 }}>
             <Image
-              src="/assets/s-logo.svg"
+              src={isDarkMode ? ASSETS.nockswapLogoDark : ASSETS.nockswapLogo}
               alt="Nockswap Logo"
               width={57}
               height={60}
             />
-          </a>
+          </Link>
 
           <button
             onClick={() => setShowLearnMore(true)}
