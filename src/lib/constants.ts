@@ -15,6 +15,7 @@ export const ASSETS = {
   baseLogo: "/assets/base-logo-v2.svg",
   upDownArrows: "/assets/up-down-arrows.svg",
   upDownArrows2: "/assets/up-down-arrows-2.svg",
+  downArrow: "/assets/down-arrow.svg",
 } as const;
 
 export const TOKENS = {

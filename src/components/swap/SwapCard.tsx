@@ -425,9 +425,9 @@ export default function SwapCard({
             </div>
           </div>
 
-          {/* Swap direction button */}
-          <button
-            onClick={handleSwapDirection}
+          {/* Swap direction indicator (disabled - one-way only for now) */}
+          <div
+            // onClick={handleSwapDirection}
             style={{
               display: "flex",
               padding: 8,
@@ -436,21 +436,18 @@ export default function SwapCard({
               borderRadius: 32,
               background: theme.swapButtonBg,
               border: "none",
-              cursor: "pointer",
             }}
           >
             <img
-              src={ASSETS.upDownArrows}
-              alt="Swap"
+              src={ASSETS.downArrow}
+              alt="To"
               style={{
                 width: 24,
                 height: 24,
                 filter: isDarkMode ? "invert(1)" : "none",
-                transform: `rotate(${rotation}deg)`,
-                transition: "transform 0.3s ease-in-out",
               }}
             />
-          </button>
+          </div>
 
           {/* TO input wrapper + Receiving address */}
           <div

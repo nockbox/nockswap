@@ -60,8 +60,8 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
           style={{
             position: "absolute",
             pointerEvents: "none",
-            left: 919,
-            top: 757,
+            left: 950, //919
+            top: 630, // 757
             width: 509,
             height: 165,
             opacity: isDarkMode ? 0.1 : 1,

@@ -20,13 +20,15 @@ export default function Home() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 20,
+              gap: 5,
               width: 560,
               textAlign: "center",
             }}
           >
             <Image
-              src={isDarkMode ? ASSETS.nockswapHeaderDark : ASSETS.nockswapHeader}
+              src={
+                isDarkMode ? ASSETS.nockswapHeaderDark : ASSETS.nockswapHeader
+              }
               alt="Nock Swap"
               width={320}
               height={72}
@@ -40,7 +42,7 @@ export default function Home() {
                 margin: 0,
               }}
             >
-              Your Bridge from Nock to Nock
+              Your Bridge from Nockchain to Base
             </p>
           </div>
 
