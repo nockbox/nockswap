@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
-import SuccessCard from "@/components/swap/SuccessCard";
+import ResultCard from "@/components/swap/ResultCard";
 import { ASSETS } from "@/lib/constants";
 
 export default function Home() {
@@ -47,8 +47,9 @@ export default function Home() {
           {/* Swap card or Success card */}
           <div style={{ marginTop: 31, width: 480 }}>
             {showSuccess ? (
-              <SuccessCard
+              <ResultCard
                 isDarkMode={isDarkMode}
+                status="success"
                 onHomeClick={() => setShowSuccess(false)}
               />
             ) : (

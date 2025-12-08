@@ -8,6 +8,8 @@ export const ASSETS = {
   nockswapLogoDark: "/assets/nockswap_logo_dark.svg",
   nockswapHeader: "/assets/nockswap-header.svg",
   nockswapHeaderDark: "/assets/nockswap-header-dark.svg",
+  txnSuccess: "/assets/txn-success.svg",
+  txnFail: "/assets/txn-fail.svg",
   nockToken: "/assets/nock-token.png",
   nockchainIcon: "/assets/nockchain-icon.svg",
   baseLogo: "/assets/base-logo-v2.svg",

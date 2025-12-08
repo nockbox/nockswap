@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { ASSETS } from "@/lib/constants";
+import { getCardTheme } from "@/lib/theme";
 
-const imgNockToken = "/assets/nock-token.png";
-const imgBaseLogo = "/assets/base-logo-v2.svg";
-const imgNockchainIcon = "/assets/nockchain-icon.svg";
+type ResultStatus = "success" | "declined";
 
-interface SuccessCardProps {
+interface ResultCardProps {
   isDarkMode?: boolean;
-  fromAmount?: string;
-  toAmount?: string;
+  status?: ResultStatus;
+  errorMessage?: string;
   networkFeePercent?: string;
   networkFeeAmount?: string;
   totalUsd?: string;
@@ -19,32 +19,22 @@ interface SuccessCardProps {
   onHomeClick?: () => void;
 }
 
-export default function SuccessCard({
+export default function ResultCard({
   isDarkMode = false,
-  fromAmount = "100,000",
-  toAmount = "99,500",
+  status = "success",
+  errorMessage = "Transaction was rejected by the network",
   networkFeePercent = "0.5%",
   networkFeeAmount = "500 NOCK",
   totalUsd = "≈$4,996.85",
   totalNock = "99,500 NOCK",
-  receivingAddress = "Ma5JW5EKUx1cL6...2Nm9qh018rnncJKQ5xgqDnal5",
+  receivingAddress = "Ma5JW...Dnal5",
   transactionId = "0xaa1...51a7d",
   onHomeClick,
-}: SuccessCardProps) {
+}: ResultCardProps) {
   const [copied, setCopied] = useState(false);
 
-  // Theme colors
-  const theme = {
-    cardBg: isDarkMode ? "#101010" : "#fff",
-    cardBorder: isDarkMode ? "#171717" : "#ededed",
-    sectionBg: isDarkMode ? "#171717" : "#f6f5f1",
-    innerBg: isDarkMode ? "#000" : "#fff",
-    textPrimary: isDarkMode ? "#fff" : "#000",
-    pillBorder: isDarkMode ? "#222" : "#f6f5f1",
-    networkBadgeBorder: isDarkMode ? "#171717" : "#f6f5f1",
-    buttonBorder: isDarkMode ? "#252525" : "#e4e3dd",
-    iconButtonBg: isDarkMode ? "#171717" : "#f6f5f1",
-  };
+  const isSuccess = status === "success";
+  const theme = getCardTheme(isDarkMode);
 
   const handleCopyAddress = async () => {
     try {
@@ -66,89 +56,76 @@ export default function SuccessCard({
       style={{
         display: "flex",
         width: 480,
-        height: 546,
         padding: 20,
         flexDirection: "column",
-        justifyContent: "space-between",
         alignItems: "center",
+        gap: 20,
         borderRadius: 16,
         border: `1px solid ${theme.cardBorder}`,
         background: theme.cardBg,
         boxSizing: "border-box",
         overflow: "clip",
-        position: "relative",
       }}
     >
-      {/* Home button */}
-      <button
-        onClick={onHomeClick}
-        style={{
-          position: "absolute",
-          top: 19,
-          right: 19,
-          display: "flex",
-          padding: "9px 14px",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          borderRadius: 32,
-          border: `1px solid ${theme.buttonBorder}`,
-          background: "transparent",
-          cursor: "pointer",
-          boxSizing: "border-box",
-        }}
-      >
-        <span
-          style={{
-            color: theme.textPrimary,
-            textAlign: "center",
-            fontFamily: "var(--font-inter), sans-serif",
-            fontSize: 15,
-            fontStyle: "normal",
-            fontWeight: 500,
-            lineHeight: "22px",
-            letterSpacing: 0.15,
-          }}
-        >
-          Home
-        </span>
-      </button>
-
-      {/* Top content - Success icon and title */}
+      {/* Top content - Status icon and title */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 20,
+          gap: 12,
           width: "100%",
         }}
       >
-        {/* Success checkmark */}
+        {/* Status icon */}
         <img
-          src="/assets/success-image.svg"
-          alt="Success"
+          src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
+          alt={isSuccess ? "Success" : "Declined"}
           style={{
-            width: 104,
-            height: 104,
+            width: 64,
+            height: 64,
           }}
         />
 
-        {/* Title */}
+        {/* Title and subtitle */}
         <div
           style={{
-            width: "100%",
-            fontFamily: "var(--font-lora), serif",
-            fontSize: 36,
-            fontWeight: 600,
-            lineHeight: "40px",
-            letterSpacing: -0.72,
-            color: theme.textPrimary,
-            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
           }}
         >
-          Success
+          <span
+            style={{
+              fontFamily: "var(--font-lora), serif",
+              fontSize: 36,
+              fontWeight: 600,
+              lineHeight: "40px",
+              letterSpacing: -0.72,
+              color: theme.textPrimary,
+              textAlign: "center",
+            }}
+          >
+            {isSuccess ? "Success" : "Declined"}
+          </span>
+          {!isSuccess && (
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 15,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: 0.15,
+                opacity: 0.5,
+                textAlign: "center",
+              }}
+            >
+              {errorMessage}
+            </span>
+          )}
         </div>
       </div>
 
@@ -176,7 +153,7 @@ export default function SuccessCard({
             gap: 12,
             width: "100%",
             borderRadius: 8,
-            background: theme.innerBg,
+            background: theme.inputBg,
             boxSizing: "border-box",
           }}
         >
@@ -198,7 +175,7 @@ export default function SuccessCard({
               }}
             >
               <img
-                src={imgNockToken}
+                src={ASSETS.nockToken}
                 alt="NOCK"
                 style={{
                   width: 40,
@@ -222,7 +199,7 @@ export default function SuccessCard({
                 }}
               >
                 <img
-                  src={imgNockchainIcon}
+                  src={ASSETS.nockchainIcon}
                   alt="Nockchain"
                   style={{
                     width: "100%",
@@ -350,7 +327,7 @@ export default function SuccessCard({
               }}
             >
               <img
-                src={imgNockToken}
+                src={ASSETS.nockToken}
                 alt="NOCK"
                 style={{
                   width: 40,
@@ -374,7 +351,7 @@ export default function SuccessCard({
                 }}
               >
                 <img
-                  src={imgBaseLogo}
+                  src={ASSETS.baseLogo}
                   alt="Base"
                   style={{
                     width: "100%",
@@ -398,11 +375,11 @@ export default function SuccessCard({
             gap: 12,
             width: "100%",
             borderRadius: 8,
-            background: theme.innerBg,
+            background: theme.inputBg,
             boxSizing: "border-box",
           }}
         >
-          {/* Network fee row */}
+          {/* Bridge fee row */}
           <div
             style={{
               display: "flex",
@@ -423,54 +400,25 @@ export default function SuccessCard({
                 opacity: 0.5,
               }}
             >
-              Network fee
+              Bridge fee {networkFeePercent}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div
-                style={{
-                  display: "flex",
-                  padding: "3px 6px",
-                  alignItems: "center",
-                  gap: 8,
-                  borderRadius: 32,
-                  border: `1px solid ${theme.pillBorder}`,
-                  boxSizing: "border-box",
-                }}
-              >
-                <span
-                  style={{
-                    color: theme.textPrimary,
-                    textAlign: "center",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 13,
-                    fontStyle: "normal",
-                    fontWeight: 500,
-                    lineHeight: "15px",
-                    letterSpacing: 0.13,
-                    opacity: 0.5,
-                  }}
-                >
-                  {networkFeePercent}
-                </span>
-              </div>
-              <span
-                style={{
-                  color: theme.textPrimary,
-                  fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 15,
-                  fontStyle: "normal",
-                  fontWeight: 500,
-                  lineHeight: "22px",
-                  letterSpacing: 0.15,
-                  opacity: 0.5,
-                }}
-              >
-                {networkFeeAmount}
-              </span>
-            </div>
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 15,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: 0.15,
+                opacity: 0.5,
+              }}
+            >
+              {networkFeeAmount}
+            </span>
           </div>
 
-          {/* Total row */}
+          {/* You will receive row */}
           <div
             style={{
               display: "flex",
@@ -490,36 +438,15 @@ export default function SuccessCard({
                 letterSpacing: 0.15,
               }}
             >
-              Total to be deposited
+              You will receive
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div
-                style={{
-                  display: "flex",
-                  padding: "3px 6px",
-                  alignItems: "center",
-                  gap: 8,
-                  borderRadius: 32,
-                  border: `1px solid ${theme.pillBorder}`,
-                  boxSizing: "border-box",
-                }}
-              >
-                <span
-                  style={{
-                    color: theme.textPrimary,
-                    textAlign: "center",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 13,
-                    fontStyle: "normal",
-                    fontWeight: 500,
-                    lineHeight: "15px",
-                    letterSpacing: 0.13,
-                    opacity: 0.5,
-                  }}
-                >
-                  {totalUsd}
-                </span>
-              </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+              }}
+            >
               <span
                 style={{
                   color: theme.textPrimary,
@@ -533,6 +460,20 @@ export default function SuccessCard({
               >
                 {totalNock}
               </span>
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: 13,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "15px",
+                  letterSpacing: 0.13,
+                  opacity: 0.5,
+                }}
+              >
+                {totalUsd}
+              </span>
             </div>
           </div>
         </div>
@@ -542,86 +483,49 @@ export default function SuccessCard({
           style={{
             display: "flex",
             padding: 16,
-            flexDirection: "column",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "center",
             width: "100%",
             borderRadius: 8,
-            background: theme.innerBg,
+            background: theme.inputBg,
             boxSizing: "border-box",
           }}
         >
-          <div
+          <span
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              width: "100%",
+              color: theme.textPrimary,
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontStyle: "normal",
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              opacity: 0.5,
             }}
           >
-            <span
+            Receiving address
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
               style={{
-                color: theme.textPrimary,
-                fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
-                fontStyle: "normal",
-                fontWeight: 500,
-                lineHeight: "22px",
-                letterSpacing: 0.15,
-                opacity: 0.5,
+                width: 14,
+                height: 14,
+                borderRadius: 32,
+                overflow: "hidden",
               }}
             >
-              Receiving address
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
+              <img
+                src={ASSETS.baseLogo}
+                alt="Base"
                 style={{
-                  color: theme.textPrimary,
-                  textAlign: "right",
-                  fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 13,
-                  fontStyle: "normal",
-                  fontWeight: 500,
-                  lineHeight: "15px",
-                  letterSpacing: 0.13,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
                 }}
-              >
-                Base
-              </span>
-              <div
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 32,
-                  overflow: "hidden",
-                }}
-              >
-                <img
-                  src={imgBaseLogo}
-                  alt="Base"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                />
-              </div>
+              />
             </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              gap: 8,
-              width: "100%",
-            }}
-          >
             <span
               style={{
-                flex: "1 1 0",
-                minWidth: 0,
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
                 fontSize: 15,
@@ -629,9 +533,6 @@ export default function SuccessCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.15,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
               }}
             >
               {receivingAddress}
@@ -669,27 +570,31 @@ export default function SuccessCard({
           style={{
             display: "flex",
             padding: 16,
-            flexDirection: "column",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "center",
             width: "100%",
             borderRadius: 8,
-            background: theme.innerBg,
+            background: theme.inputBg,
             boxSizing: "border-box",
           }}
         >
-          <div
+          <span
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              width: "100%",
+              color: theme.textPrimary,
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontStyle: "normal",
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              opacity: 0.5,
             }}
           >
+            Transaction ID
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span
               style={{
-                flex: "1 1 0",
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
                 fontSize: 15,
@@ -697,52 +602,70 @@ export default function SuccessCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.15,
-                opacity: 0.5,
               }}
             >
-              Transaction ID
+              {transactionId}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
+            <button
+              onClick={handleOpenTransaction}
+              style={{
+                display: "flex",
+                padding: 3,
+                alignItems: "center",
+                gap: 10,
+                borderRadius: 20,
+                background: theme.iconButtonBg,
+                border: "none",
+                cursor: "pointer",
+              }}
+              title="View on explorer"
+            >
+              <img
+                src="/assets/external-link-icon.svg"
+                alt="External link"
                 style={{
-                  color: theme.textPrimary,
-                  fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 15,
-                  fontStyle: "normal",
-                  fontWeight: 500,
-                  lineHeight: "22px",
-                  letterSpacing: 0.15,
+                  width: 16,
+                  height: 16,
                 }}
-              >
-                {transactionId}
-              </span>
-              <button
-                onClick={handleOpenTransaction}
-                style={{
-                  display: "flex",
-                  padding: 3,
-                  alignItems: "center",
-                  gap: 10,
-                  borderRadius: 20,
-                  background: theme.iconButtonBg,
-                  border: "none",
-                  cursor: "pointer",
-                }}
-                title="View on explorer"
-              >
-                <img
-                  src="/assets/external-link-icon.svg"
-                  alt="External link"
-                  style={{
-                    width: 16,
-                    height: 16,
-                  }}
-                />
-              </button>
-            </div>
+              />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Back to home button */}
+      <button
+        onClick={onHomeClick}
+        style={{
+          display: "flex",
+          width: "100%",
+          height: 56,
+          padding: "17px 20px",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 10,
+          borderRadius: 8,
+          background: "#ffc413",
+          border: "none",
+          cursor: "pointer",
+          boxSizing: "border-box",
+        }}
+      >
+        <span
+          style={{
+            color: "#000",
+            textAlign: "center",
+            fontFamily: "var(--font-inter), sans-serif",
+            fontSize: 16,
+            fontStyle: "normal",
+            fontWeight: 500,
+            lineHeight: "22px",
+            letterSpacing: 0.16,
+          }}
+        >
+          Back to home
+        </span>
+      </button>
     </div>
   );
 }

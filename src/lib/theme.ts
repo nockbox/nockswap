@@ -1,4 +1,4 @@
-export interface SwapCardTheme {
+export interface CardTheme {
   cardBg: string;
   cardBorder: string;
   sectionBg: string;
@@ -8,11 +8,12 @@ export interface SwapCardTheme {
   swapButtonBg: string;
   swapButtonIcon: string;
   networkBadgeBorder: string;
+  iconButtonBg: string;
   error: string;
   errorGlow: string;
 }
 
-export function getSwapCardTheme(isDarkMode: boolean): SwapCardTheme {
+export function getCardTheme(isDarkMode: boolean): CardTheme {
   return {
     cardBg: isDarkMode ? "#101010" : "#fff",
     cardBorder: isDarkMode ? "#171717" : "#ededed",
@@ -23,10 +24,15 @@ export function getSwapCardTheme(isDarkMode: boolean): SwapCardTheme {
     swapButtonBg: isDarkMode ? "#fff" : "#000",
     swapButtonIcon: isDarkMode ? "#000" : "#fff",
     networkBadgeBorder: isDarkMode ? "#171717" : "#f6f5f1",
+    iconButtonBg: isDarkMode ? "#171717" : "#f6f5f1",
     error: "#ff4e54",
     errorGlow: "rgba(255, 78, 84, 0.25)",
   };
 }
+
+// Backwards compatibility alias
+export const getSwapCardTheme = getCardTheme;
+export type SwapCardTheme = CardTheme;
 
 // Skeleton colors for loading states
 export const skeletonColors = {
