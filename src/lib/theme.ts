@@ -8,6 +8,8 @@ export interface SwapCardTheme {
   swapButtonBg: string;
   swapButtonIcon: string;
   networkBadgeBorder: string;
+  error: string;
+  errorGlow: string;
 }
 
 export function getSwapCardTheme(isDarkMode: boolean): SwapCardTheme {
@@ -21,6 +23,8 @@ export function getSwapCardTheme(isDarkMode: boolean): SwapCardTheme {
     swapButtonBg: isDarkMode ? "#fff" : "#000",
     swapButtonIcon: isDarkMode ? "#000" : "#fff",
     networkBadgeBorder: isDarkMode ? "#171717" : "#f6f5f1",
+    error: "#ff4e54",
+    errorGlow: "rgba(255, 78, 84, 0.25)",
   };
 }
 

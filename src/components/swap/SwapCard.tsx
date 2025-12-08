@@ -34,6 +34,12 @@ export default function SwapCard({
   const fromUSD = calcUSD(parseAmount(fromAmount), nockPrice);
   const toUSD = calcUSD(parseAmount(toAmount), nockPrice);
 
+  // Balance check
+  // TODO: replace with actual wallet balance)
+  const balance = 50000;
+  const hasInsufficientFunds =
+    fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
+
   // Address validation
   const isAddressValid =
     receivingAddress.trim().length === 0
@@ -154,6 +160,12 @@ export default function SwapCard({
               borderRadius: 12,
               background: theme.sectionBg,
               boxSizing: "border-box",
+              border: hasInsufficientFunds
+                ? `1px solid ${theme.error}`
+                : "none",
+              boxShadow: hasInsufficientFunds
+                ? `0px 0px 0px 3px ${theme.errorGlow}`
+                : "none",
             }}
           >
             <div
@@ -323,6 +335,7 @@ export default function SwapCard({
                       fromUSD
                     )}
                   </span>
+                  {/* TODO: replace with <Image/> ?*/}
                   <img
                     src={ASSETS.upDownArrows2}
                     alt="Price change"
@@ -333,52 +346,80 @@ export default function SwapCard({
                     }}
                   />
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      color: theme.textPrimary,
-                      textAlign: "right",
-                      fontFamily: "var(--font-inter), sans-serif",
-                      fontSize: 13,
-                      fontStyle: "normal",
-                      fontWeight: 500,
-                      lineHeight: "15px",
-                      letterSpacing: 0.13,
-                      opacity: 0.5,
-                    }}
-                  >
-                    Balance: 50,352.49
-                  </span>
-                  <button
-                    onClick={handleMaxClick}
-                    style={{
-                      display: "flex",
-                      width: 39,
-                      padding: "4px 8px",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      borderRadius: 32,
-                      border: `1px solid ${theme.maxButtonBorder}`,
-                      background: "transparent",
-                      cursor: "pointer",
-                      boxSizing: "border-box",
-                    }}
-                  >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    minHeight: 23,
+                  }}
+                >
+                  {hasInsufficientFunds ? (
                     <span
                       style={{
+                        color: theme.error,
+                        textAlign: "right",
                         fontFamily: "var(--font-inter), sans-serif",
                         fontSize: 13,
                         fontStyle: "normal",
                         fontWeight: 500,
                         lineHeight: "15px",
                         letterSpacing: 0.13,
-                        color: theme.textPrimary,
-                        textAlign: "center",
                       }}
                     >
-                      Max
+                      Insufficient funds
                     </span>
-                  </button>
+                  ) : (
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      <span
+                        style={{
+                          color: theme.textPrimary,
+                          textAlign: "right",
+                          fontFamily: "var(--font-inter), sans-serif",
+                          fontSize: 13,
+                          fontStyle: "normal",
+                          fontWeight: 500,
+                          lineHeight: "15px",
+                          letterSpacing: 0.13,
+                          opacity: 0.5,
+                        }}
+                      >
+                        Balance: 50,352.49
+                      </span>
+                      <button
+                        onClick={handleMaxClick}
+                        style={{
+                          display: "flex",
+                          width: 39,
+                          padding: "4px 8px",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          borderRadius: 32,
+                          border: `1px solid ${theme.maxButtonBorder}`,
+                          background: "transparent",
+                          cursor: "pointer",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: "var(--font-inter), sans-serif",
+                            fontSize: 13,
+                            fontStyle: "normal",
+                            fontWeight: 500,
+                            lineHeight: "15px",
+                            letterSpacing: 0.13,
+                            color: theme.textPrimary,
+                            textAlign: "center",
+                          }}
+                        >
+                          Max
+                        </span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -634,6 +675,10 @@ export default function SwapCard({
                 borderRadius: 8,
                 background: theme.inputBg,
                 boxSizing: "border-box",
+                border: showAddressError ? `1px solid ${theme.error}` : "none",
+                boxShadow: showAddressError
+                  ? `0px 0px 0px 3px ${theme.errorGlow}`
+                  : "none",
               }}
             >
               <div
@@ -657,10 +702,10 @@ export default function SwapCard({
                 >
                   Receiving address
                 </span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {showAddressError ? (
                   <span
                     style={{
-                      color: theme.textPrimary,
+                      color: theme.error,
                       textAlign: "right",
                       fontFamily: "var(--font-inter), sans-serif",
                       fontSize: 13,
@@ -670,30 +715,56 @@ export default function SwapCard({
                       letterSpacing: 0.13,
                     }}
                   >
-                    {isNockchainToBase ? "Base" : "Nockchain"}
+                    {isNockchainToBase
+                      ? "Enter a valid Base address"
+                      : "Enter a valid Nockchain address"}
                   </span>
+                ) : (
                   <div
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 32,
-                      overflow: "hidden",
-                      border: `2px solid ${theme.networkBadgeBorder}`,
-                      boxSizing: "border-box",
-                      background: isNockchainToBase ? "#fff" : "#1a1a1a",
-                    }}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
                   >
-                    <img
-                      src={isNockchainToBase ? ASSETS.baseLogo : ASSETS.nockchainIcon}
-                      alt={isNockchainToBase ? "Base" : "Nockchain"}
+                    <span
                       style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
+                        color: theme.textPrimary,
+                        textAlign: "right",
+                        fontFamily: "var(--font-inter), sans-serif",
+                        fontSize: 13,
+                        fontStyle: "normal",
+                        fontWeight: 500,
+                        lineHeight: "15px",
+                        letterSpacing: 0.13,
                       }}
-                    />
+                    >
+                      {isNockchainToBase ? "Base" : "Nockchain"}
+                    </span>
+                    <div
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: 32,
+                        overflow: "hidden",
+                        border: `2px solid ${theme.networkBadgeBorder}`,
+                        boxSizing: "border-box",
+                        background: isNockchainToBase ? "#fff" : "#1a1a1a",
+                      }}
+                    >
+                      {/* TODO change to <Image /> ? */}
+                      <img
+                        src={
+                          isNockchainToBase
+                            ? ASSETS.baseLogo
+                            : ASSETS.nockchainIcon
+                        }
+                        alt={isNockchainToBase ? "Base" : "Nockchain"}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               <input
                 type="text"
@@ -707,10 +778,7 @@ export default function SwapCard({
                 className="address-input"
                 style={{
                   width: "100%",
-                  color:
-                    showAddressError && isAddressValid === false
-                      ? "#ef4444"
-                      : theme.textPrimary,
+                  color: theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
                   fontSize: 15,
                   fontStyle: "normal",
@@ -724,61 +792,48 @@ export default function SwapCard({
                   margin: 0,
                 }}
               />
-              {/* {showAddressError && (
-                <span
-                  style={{
-                    color: "#ef4444",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    marginTop: 4,
-                  }}
-                >
-                  {receivingAddress.trim().length === 0
-                    ? "Please enter a receiving address"
-                    : isNockchainToBase
-                    ? "Invalid Base address"
-                    : "Invalid Nockchain address"}
-                </span>
-              )} */}
             </div>
           </div>
         </div>
       </div>
 
       {/* CTA Button */}
-      <button
-        onClick={handleSwap}
-        style={{
-          display: "flex",
-          width: 440,
-          height: 56,
-          padding: "17px 20px",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: 10,
-          borderRadius: 8,
-          background: "#ffc413",
-          border: "none",
-          cursor: "pointer",
-          boxSizing: "border-box",
-        }}
-      >
-        <span
-          style={{
-            color: "#000",
-            textAlign: "center",
-            fontFamily: "var(--font-inter), sans-serif",
-            fontSize: 16,
-            fontStyle: "normal",
-            fontWeight: 500,
-            lineHeight: "22px",
-            letterSpacing: 0.16,
-          }}
-        >
-          Swap with Iris
-        </span>
-      </button>
+      {(() => {
+        return (
+          <button
+            onClick={handleSwap}
+            style={{
+              display: "flex",
+              width: 440,
+              height: 56,
+              padding: "17px 20px",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 10,
+              borderRadius: 8,
+              background: "#ffc413",
+              border: "none",
+              cursor: "pointer",
+              boxSizing: "border-box",
+            }}
+          >
+            <span
+              style={{
+                color: "#000",
+                textAlign: "center",
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 16,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: 0.16,
+              }}
+            >
+              Swap with Iris
+            </span>
+          </button>
+        );
+      })()}
     </div>
   );
 }
