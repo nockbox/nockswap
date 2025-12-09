@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { usePrice } from "@/hooks/usePrice";
-import { NOCK_COINGECKO_ID, ASSETS } from "@/lib/constants";
+import { useWallet } from "@/hooks/useWallet";
+import {
+  NOCK_COINGECKO_ID,
+  ASSETS,
+  IRIS_CHROME_STORE_URL,
+} from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { calcUSD, parseAmount, formatWithCommas } from "@/lib/utils";
 import { getSwapCardTheme } from "@/lib/theme";
@@ -30,15 +35,23 @@ export default function SwapCard({
     usePrice(NOCK_COINGECKO_ID);
   const nockPrice = priceData?.usd ?? 0;
 
+  // Wallet connection
+  const {
+    isInstalled,
+    isConnected,
+    isConnecting,
+    address,
+    connect,
+    formatAddress,
+  } = useWallet();
+
   // Calculate USD values from amounts
   const fromUSD = calcUSD(parseAmount(fromAmount), nockPrice);
   const toUSD = calcUSD(parseAmount(toAmount), nockPrice);
 
-  // Balance check
-  // TODO: replace with actual wallet balance)
-  const balance = 50000;
-  const hasInsufficientFunds =
-    fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
+  // Balance check not currently doable - hardcoded to false
+  // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
+  const hasInsufficientFunds = false;
 
   // Address validation
   const isAddressValid =
@@ -64,6 +77,7 @@ export default function SwapCard({
 
   const theme = getSwapCardTheme(isDarkMode);
 
+  // Unused until we can bridge both ways
   const handleSwapDirection = () => {
     setRotation((prev) => prev + 180);
 
@@ -73,10 +87,6 @@ export default function SwapCard({
     setIsNockchainToBase(!isNockchainToBase);
     setReceivingAddress(""); // Clear address when direction changes
     setShowAddressError(false);
-  };
-
-  const handleMaxClick = () => {
-    setFromAmount("50,352.49");
   };
 
   const handleSwap = () => {
@@ -346,81 +356,6 @@ export default function SwapCard({
                     }}
                   />
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    minHeight: 23,
-                  }}
-                >
-                  {hasInsufficientFunds ? (
-                    <span
-                      style={{
-                        color: theme.error,
-                        textAlign: "right",
-                        fontFamily: "var(--font-inter), sans-serif",
-                        fontSize: 13,
-                        fontStyle: "normal",
-                        fontWeight: 500,
-                        lineHeight: "15px",
-                        letterSpacing: 0.13,
-                      }}
-                    >
-                      Insufficient funds
-                    </span>
-                  ) : (
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}
-                    >
-                      <span
-                        style={{
-                          color: theme.textPrimary,
-                          textAlign: "right",
-                          fontFamily: "var(--font-inter), sans-serif",
-                          fontSize: 13,
-                          fontStyle: "normal",
-                          fontWeight: 500,
-                          lineHeight: "15px",
-                          letterSpacing: 0.13,
-                          opacity: 0.5,
-                        }}
-                      >
-                        Balance: 50,352.49
-                      </span>
-                      <button
-                        onClick={handleMaxClick}
-                        style={{
-                          display: "flex",
-                          width: 39,
-                          padding: "4px 8px",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          borderRadius: 32,
-                          border: `1px solid ${theme.maxButtonBorder}`,
-                          background: "transparent",
-                          cursor: "pointer",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontFamily: "var(--font-inter), sans-serif",
-                            fontSize: 13,
-                            fontStyle: "normal",
-                            fontWeight: 500,
-                            lineHeight: "15px",
-                            letterSpacing: 0.13,
-                            color: theme.textPrimary,
-                            textAlign: "center",
-                          }}
-                        >
-                          Max
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           </div>
@@ -654,7 +589,7 @@ export default function SwapCard({
                     opacity: 0.5,
                   }}
                 >
-                  Net fee: 0.5% included
+                  Bridge fee 0.5%
                 </span>
               </div>
             </div>
@@ -796,9 +731,26 @@ export default function SwapCard({
 
       {/* CTA Button */}
       {(() => {
+        // Determine button state and text
+        let buttonText = "Swap with Iris";
+        let buttonAction = handleSwap;
+        let isDisabled = false;
+
+        if (!isInstalled) {
+          buttonText = "Install Iris Wallet";
+          buttonAction = () => {
+            window.open(IRIS_CHROME_STORE_URL, "_blank");
+          };
+        } else if (!isConnected) {
+          buttonText = isConnecting ? "Connecting..." : "Connect Wallet";
+          buttonAction = connect;
+          isDisabled = isConnecting;
+        }
+
         return (
           <button
-            onClick={handleSwap}
+            onClick={buttonAction}
+            disabled={isDisabled}
             style={{
               display: "flex",
               width: 440,
@@ -812,6 +764,7 @@ export default function SwapCard({
               border: "none",
               cursor: "pointer",
               boxSizing: "border-box",
+              opacity: isDisabled ? 0.7 : 1,
             }}
           >
             <span
@@ -826,7 +779,7 @@ export default function SwapCard({
                 letterSpacing: 0.16,
               }}
             >
-              Swap with Iris
+              {buttonText}
             </span>
           </button>
         );

@@ -2,6 +2,10 @@ export const PROTOCOL_FEE_BPS = 50; // 0.5% fee
 
 export const NOCK_COINGECKO_ID = "nockchain";
 
+// Iris Wallet
+export const IRIS_EXTENSION_ID = "opodllkjacnodkojeedmgjbogbmfchlb";
+export const IRIS_CHROME_STORE_URL = `https://chromewebstore.google.com/detail/iris-wallet/${IRIS_EXTENSION_ID}`;
+
 // Asset paths
 export const ASSETS = {
   nockswapLogo: "/assets/nockswap_logo.svg",
