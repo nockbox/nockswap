@@ -9,7 +9,13 @@ import {
   IRIS_CHROME_STORE_URL,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
-import { calcUSD, parseAmount, formatWithCommas } from "@/lib/utils";
+import {
+  calcUSD,
+  calcNOCK,
+  formatNOCK,
+  parseAmount,
+  formatWithCommas,
+} from "@/lib/utils";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -29,6 +35,9 @@ export default function SwapCard({
   const [isNockchainToBase, setIsNockchainToBase] = useState(true);
   const [showAddressError, setShowAddressError] = useState(false);
   const [rotation, setRotation] = useState(0);
+  // Toggle between USD and NOCK input modes
+  const [isFromUsdMode, setIsFromUsdMode] = useState(false);
+  const [isToUsdMode, setIsToUsdMode] = useState(false);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
@@ -45,9 +54,46 @@ export default function SwapCard({
     formatAddress,
   } = useWallet();
 
-  // Calculate USD values from amounts
-  const fromUSD = calcUSD(parseAmount(fromAmount), nockPrice);
-  const toUSD = calcUSD(parseAmount(toAmount), nockPrice);
+  // Calculate the secondary display value based on input mode
+  const fromSecondary = isFromUsdMode
+    ? formatNOCK(calcNOCK(parseAmount(fromAmount), nockPrice)) + " NOCK"
+    : calcUSD(parseAmount(fromAmount), nockPrice);
+  const toSecondary = isToUsdMode
+    ? formatNOCK(calcNOCK(parseAmount(toAmount), nockPrice)) + " NOCK"
+    : calcUSD(parseAmount(toAmount), nockPrice);
+
+  // Toggle handlers for USD/NOCK mode
+  const handleFromToggle = () => {
+    const currentValue = parseAmount(fromAmount);
+    if (currentValue > 0 && nockPrice > 0) {
+      if (isFromUsdMode) {
+        // Converting from USD to NOCK
+        const nockValue = calcNOCK(currentValue, nockPrice);
+        setFromAmount(formatWithCommas(nockValue.toFixed(2)));
+      } else {
+        // Converting from NOCK to USD
+        const usdValue = currentValue * nockPrice;
+        setFromAmount(formatWithCommas(usdValue.toFixed(2)));
+      }
+    }
+    setIsFromUsdMode(!isFromUsdMode);
+  };
+
+  const handleToToggle = () => {
+    const currentValue = parseAmount(toAmount);
+    if (currentValue > 0 && nockPrice > 0) {
+      if (isToUsdMode) {
+        // Converting from USD to NOCK
+        const nockValue = calcNOCK(currentValue, nockPrice);
+        setToAmount(formatWithCommas(nockValue.toFixed(2)));
+      } else {
+        // Converting from NOCK to USD
+        const usdValue = currentValue * nockPrice;
+        setToAmount(formatWithCommas(usdValue.toFixed(2)));
+      }
+    }
+    setIsToUsdMode(!isToUsdMode);
+  };
 
   // Balance check not currently doable - hardcoded to false
   // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
@@ -201,6 +247,21 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
+                {isFromUsdMode && (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-lora), serif",
+                      fontSize: 36,
+                      fontWeight: 600,
+                      lineHeight: "40px",
+                      letterSpacing: -1.44,
+                      color: theme.textPrimary,
+                      opacity: fromAmount ? 1 : 0.4,
+                    }}
+                  >
+                    $
+                  </span>
+                )}
                 <input
                   type="text"
                   value={fromAmount}
@@ -325,7 +386,18 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <button
+                  onClick={handleFromToggle}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                  }}
+                >
                   <span
                     style={{
                       color: theme.textPrimary,
@@ -342,20 +414,19 @@ export default function SwapCard({
                     {isPriceLoading ? (
                       <Skeleton isDarkMode={isDarkMode} />
                     ) : (
-                      fromUSD
+                      fromSecondary
                     )}
                   </span>
-                  {/* TODO: replace with <Image/> ?*/}
                   <img
                     src={ASSETS.upDownArrows2}
-                    alt="Price change"
+                    alt="Toggle USD/NOCK"
                     style={{
                       width: 14,
                       height: 14,
                       opacity: 0.5,
                     }}
                   />
-                </div>
+                </button>
               </div>
             </div>
           </div>
@@ -422,6 +493,21 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
+                {isToUsdMode && (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-lora), serif",
+                      fontSize: 36,
+                      fontWeight: 600,
+                      lineHeight: "40px",
+                      letterSpacing: -1.44,
+                      color: theme.textPrimary,
+                      opacity: toAmount ? 1 : 0.4,
+                    }}
+                  >
+                    $
+                  </span>
+                )}
                 <input
                   type="text"
                   value={toAmount}
@@ -546,7 +632,18 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <button
+                  onClick={handleToToggle}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                  }}
+                >
                   <span
                     style={{
                       color: theme.textPrimary,
@@ -563,19 +660,19 @@ export default function SwapCard({
                     {isPriceLoading ? (
                       <Skeleton isDarkMode={isDarkMode} />
                     ) : (
-                      toUSD
+                      toSecondary
                     )}
                   </span>
                   <img
                     src={ASSETS.upDownArrows2}
-                    alt="Price change"
+                    alt="Toggle USD/NOCK"
                     style={{
                       width: 14,
                       height: 14,
                       opacity: 0.5,
                     }}
                   />
-                </div>
+                </button>
                 <span
                   style={{
                     color: theme.textPrimary,

@@ -32,6 +32,24 @@ export function calcUSD(amount: number, price: number): string {
 }
 
 /**
+ * Calculate NOCK amount from USD value and price
+ */
+export function calcNOCK(usdAmount: number, price: number): number {
+  if (price === 0) return 0;
+  return usdAmount / price;
+}
+
+/**
+ * Format NOCK amount with commas
+ */
+export function formatNOCK(amount: number): string {
+  return amount.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
  * Parse a formatted number string (with commas) to a number
  */
 export function parseAmount(value: string): number {
