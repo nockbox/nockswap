@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
@@ -25,14 +24,14 @@ export default function Home() {
               textAlign: "center",
             }}
           >
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={
                 isDarkMode ? ASSETS.nockswapHeaderDark : ASSETS.nockswapHeader
               }
               alt="Nock Swap"
               width={320}
               height={72}
-              priority
             />
             <p
               style={{

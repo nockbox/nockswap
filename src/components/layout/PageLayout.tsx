@@ -134,6 +134,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
             src="/assets/design-2.svg"
             alt=""
             fill
+            priority
             style={{ objectFit: "contain" }}
           />
         </div>
@@ -151,8 +152,9 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
             zIndex: 20,
           }}
         >
-          <Link href="/" style={{ width: 57, height: 60 }}>
-            <Image
+          <Link href="/">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={isDarkMode ? ASSETS.nockswapLogoDark : ASSETS.nockswapLogo}
               alt="Nockswap Logo"
               width={57}
