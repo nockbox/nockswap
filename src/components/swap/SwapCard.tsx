@@ -3,19 +3,13 @@
 import { useState } from "react";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
+import { useSwapForm } from "@/hooks/useSwapForm";
 import {
   NOCK_COINGECKO_ID,
   ASSETS,
   IRIS_CHROME_STORE_URL,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
-import {
-  calcUSD,
-  calcNOCK,
-  formatNOCK,
-  parseAmount,
-  formatWithCommas,
-} from "@/lib/utils";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -28,72 +22,36 @@ export default function SwapCard({
   isDarkMode = false,
   onSwapSuccess,
 }: SwapCardProps) {
-  const [fromAmount, setFromAmount] = useState("");
-  const [toAmount, setToAmount] = useState("");
   const [receivingAddress, setReceivingAddress] = useState("");
   // true = Nockchain -> Base, false = Base -> Nockchain
   const [isNockchainToBase, setIsNockchainToBase] = useState(true);
   const [showAddressError, setShowAddressError] = useState(false);
   const [rotation, setRotation] = useState(0);
-  // Toggle between USD and NOCK input modes
-  const [isFromUsdMode, setIsFromUsdMode] = useState(false);
-  const [isToUsdMode, setIsToUsdMode] = useState(false);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
     usePrice(NOCK_COINGECKO_ID);
   const nockPrice = priceData?.usd ?? 0;
 
-  // Wallet connection
+  // Swap form state and handlers
   const {
-    isInstalled,
-    isConnected,
-    isConnecting,
-    address,
-    connect,
-    formatAddress,
-  } = useWallet();
+    fromAmount,
+    toAmount,
+    setFromAmount,
+    setToAmount,
+    isFromUsdMode,
+    isToUsdMode,
+    handleFromAmountChange,
+    handleToAmountChange,
+    handleFromToggle,
+    handleToToggle,
+    handleAmountBlur,
+    fromSecondary,
+    toSecondary,
+  } = useSwapForm({ nockPrice });
 
-  // Calculate the secondary display value based on input mode
-  const fromSecondary = isFromUsdMode
-    ? formatNOCK(calcNOCK(parseAmount(fromAmount), nockPrice)) + " NOCK"
-    : calcUSD(parseAmount(fromAmount), nockPrice);
-  const toSecondary = isToUsdMode
-    ? formatNOCK(calcNOCK(parseAmount(toAmount), nockPrice)) + " NOCK"
-    : calcUSD(parseAmount(toAmount), nockPrice);
-
-  // Toggle handlers for USD/NOCK mode
-  const handleFromToggle = () => {
-    const currentValue = parseAmount(fromAmount);
-    if (currentValue > 0 && nockPrice > 0) {
-      if (isFromUsdMode) {
-        // Converting from USD to NOCK
-        const nockValue = calcNOCK(currentValue, nockPrice);
-        setFromAmount(formatWithCommas(nockValue.toFixed(2)));
-      } else {
-        // Converting from NOCK to USD
-        const usdValue = currentValue * nockPrice;
-        setFromAmount(formatWithCommas(usdValue.toFixed(2)));
-      }
-    }
-    setIsFromUsdMode(!isFromUsdMode);
-  };
-
-  const handleToToggle = () => {
-    const currentValue = parseAmount(toAmount);
-    if (currentValue > 0 && nockPrice > 0) {
-      if (isToUsdMode) {
-        // Converting from USD to NOCK
-        const nockValue = calcNOCK(currentValue, nockPrice);
-        setToAmount(formatWithCommas(nockValue.toFixed(2)));
-      } else {
-        // Converting from NOCK to USD
-        const usdValue = currentValue * nockPrice;
-        setToAmount(formatWithCommas(usdValue.toFixed(2)));
-      }
-    }
-    setIsToUsdMode(!isToUsdMode);
-  };
+  // Wallet connection
+  const { isInstalled, isConnected, isConnecting, connect } = useWallet();
 
   // Balance check not currently doable - hardcoded to false
   // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
@@ -106,20 +64,6 @@ export default function SwapCard({
       : isNockchainToBase
       ? isEvmAddress(receivingAddress) // Receiving on Base needs EVM address
       : isNockAddress(receivingAddress); // Receiving on Nockchain needs Nock address
-
-  // Handle input change - allow typing with or without commas
-  const handleAmountChange = (value: string, setter: (val: string) => void) => {
-    // Allow numbers, commas, and one decimal point
-    const cleaned = value.replace(/[^0-9.,]/g, "");
-    setter(cleaned);
-  };
-
-  // Format on blur
-  const handleAmountBlur = (value: string, setter: (val: string) => void) => {
-    if (value) {
-      setter(formatWithCommas(value));
-    }
-  };
 
   const theme = getSwapCardTheme(isDarkMode);
 
@@ -265,9 +209,7 @@ export default function SwapCard({
                 <input
                   type="text"
                   value={fromAmount}
-                  onChange={(e) =>
-                    handleAmountChange(e.target.value, setFromAmount)
-                  }
+                  onChange={(e) => handleFromAmountChange(e.target.value)}
                   onBlur={() => handleAmountBlur(fromAmount, setFromAmount)}
                   placeholder="0"
                   style={{
@@ -511,9 +453,7 @@ export default function SwapCard({
                 <input
                   type="text"
                   value={toAmount}
-                  onChange={(e) =>
-                    handleAmountChange(e.target.value, setToAmount)
-                  }
+                  onChange={(e) => handleToAmountChange(e.target.value)}
                   onBlur={() => handleAmountBlur(toAmount, setToAmount)}
                   placeholder="0"
                   style={{
