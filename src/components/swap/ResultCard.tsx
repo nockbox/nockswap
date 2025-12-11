@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ASSETS } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 
-type ResultStatus = "success" | "declined";
+type ResultStatus = "success" | "failed";
 
 interface ResultCardProps {
   isDarkMode?: boolean;
@@ -80,7 +80,7 @@ export default function ResultCard({
         {/* Status icon */}
         <img
           src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
-          alt={isSuccess ? "Success" : "Declined"}
+          alt={isSuccess ? "Success" : "Failed"}
           style={{
             width: 64,
             height: 64,
@@ -107,7 +107,7 @@ export default function ResultCard({
               textAlign: "center",
             }}
           >
-            {isSuccess ? "Success" : "Declined"}
+            {isSuccess ? "Success" : "Failed"}
           </span>
           {!isSuccess && (
             <span

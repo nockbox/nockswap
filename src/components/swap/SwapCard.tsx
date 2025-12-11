@@ -782,6 +782,11 @@ export default function SwapCard({
           buttonText = isConnecting ? "Connecting..." : "Connect Wallet";
           buttonAction = connect;
           isDisabled = isConnecting;
+        } else {
+          // Connected - check if form is complete
+          const hasAmount = fromAmount.trim().length > 0;
+          const hasAddress = receivingAddress.trim().length > 0;
+          isDisabled = !hasAmount || !hasAddress;
         }
 
         return (
@@ -797,11 +802,10 @@ export default function SwapCard({
               alignItems: "center",
               gap: 10,
               borderRadius: 8,
-              background: "#ffc413",
+              background: isDisabled ? "#f6f5f1" : "#ffc413",
               border: "none",
-              cursor: "pointer",
+              cursor: isDisabled ? "not-allowed" : "pointer",
               boxSizing: "border-box",
-              opacity: isDisabled ? 0.7 : 1,
             }}
           >
             <span
@@ -814,6 +818,7 @@ export default function SwapCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
+                opacity: isDisabled ? 0.4 : 1,
               }}
             >
               {buttonText}
