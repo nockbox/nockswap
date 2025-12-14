@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
+import { useBridge, BridgeResult } from "@/hooks/useBridge";
 import {
   NOCK_COINGECKO_ID,
   ASSETS,
@@ -12,21 +13,23 @@ import {
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { parseAmount } from "@/lib/utils";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
-  onSwapSuccess?: () => void;
+  onSwapSuccess?: (result: BridgeResult) => void;
+  onSwapError?: (error: string) => void;
 }
 
 export default function SwapCard({
   isDarkMode = false,
   onSwapSuccess,
+  onSwapError,
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
   // true = Nockchain -> Base, false = Base -> Nockchain
   const [isNockchainToBase, setIsNockchainToBase] = useState(true);
   const [showAddressError, setShowAddressError] = useState(false);
-  const [rotation, setRotation] = useState(0);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
@@ -53,7 +56,14 @@ export default function SwapCard({
   // Wallet connection
   const { isInstalled, isConnected, isConnecting, connect } = useWallet();
 
-  // Balance check not currently doable - hardcoded to false
+  // Bridge hook
+  const {
+    status: bridgeStatus,
+    bridgeToBase,
+    isBridgeConfigured,
+  } = useBridge();
+
+  // Balance check not currently doable
   // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
   const hasInsufficientFunds = false;
 
@@ -67,28 +77,33 @@ export default function SwapCard({
 
   const theme = getSwapCardTheme(isDarkMode);
 
-  // Unused until we can bridge both ways
-  const handleSwapDirection = () => {
-    setRotation((prev) => prev + 180);
-
-    const temp = fromAmount;
-    setFromAmount(toAmount);
-    setToAmount(temp);
-    setIsNockchainToBase(!isNockchainToBase);
-    setReceivingAddress(""); // Clear address when direction changes
-    setShowAddressError(false);
-  };
-
-  const handleSwap = () => {
+  const handleSwap = async () => {
     // Validate address before proceeding
     if (isAddressValid === false || receivingAddress.trim().length === 0) {
       setShowAddressError(true);
       return;
     }
 
-    console.log("Swap initiated");
-    if (onSwapSuccess) {
-      onSwapSuccess();
+    // Get the amount in NOCK (convert from USD if needed)
+    const nockAmount = isFromUsdMode
+      ? parseAmount(fromAmount) / nockPrice
+      : parseAmount(fromAmount);
+
+    if (nockAmount <= 0) {
+      return;
+    }
+
+    try {
+      const result = await bridgeToBase(receivingAddress, nockAmount);
+      if (onSwapSuccess) {
+        onSwapSuccess(result);
+      }
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Bridge transaction failed";
+      if (onSwapError) {
+        onSwapError(errorMessage);
+      }
     }
   };
 
@@ -375,7 +390,6 @@ export default function SwapCard({
 
           {/* Swap direction indicator (disabled - one-way only for now) */}
           <div
-            // onClick={handleSwapDirection}
             style={{
               display: "flex",
               padding: 8,
@@ -770,10 +784,20 @@ export default function SwapCard({
       {(() => {
         // Determine button state and text
         let buttonText = "Swap with Iris";
-        let buttonAction = handleSwap;
+        let buttonAction: () => void = handleSwap;
         let isDisabled = false;
+        let isLoading = false;
 
-        if (!isInstalled) {
+        // Bridge status takes priority when active
+        if (bridgeStatus === "pending") {
+          buttonText = "Processing...";
+          isDisabled = true;
+          isLoading = true;
+        } else if (bridgeStatus === "awaiting_signature") {
+          buttonText = "Approve in Wallet...";
+          isDisabled = true;
+          isLoading = true;
+        } else if (!isInstalled) {
           buttonText = "Install Iris Wallet";
           buttonAction = () => {
             window.open(IRIS_CHROME_STORE_URL, "_blank");
@@ -782,6 +806,9 @@ export default function SwapCard({
           buttonText = isConnecting ? "Connecting..." : "Connect Wallet";
           buttonAction = connect;
           isDisabled = isConnecting;
+        } else if (!isBridgeConfigured) {
+          buttonText = "Bridge Error";
+          isDisabled = true;
         } else {
           // Connected - check if form is complete
           const hasAmount = fromAmount.trim().length > 0;
@@ -792,7 +819,7 @@ export default function SwapCard({
         return (
           <button
             onClick={buttonAction}
-            disabled={isDisabled}
+            disabled={isDisabled || isLoading}
             style={{
               display: "flex",
               width: 440,
@@ -802,9 +829,9 @@ export default function SwapCard({
               alignItems: "center",
               gap: 10,
               borderRadius: 8,
-              background: isDisabled ? "#f6f5f1" : "#ffc413",
+              background: isDisabled || isLoading ? "#f6f5f1" : "#ffc413",
               border: "none",
-              cursor: isDisabled ? "not-allowed" : "pointer",
+              cursor: isDisabled || isLoading ? "not-allowed" : "pointer",
               boxSizing: "border-box",
             }}
           >
@@ -818,7 +845,7 @@ export default function SwapCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
-                opacity: isDisabled ? 0.4 : 1,
+                opacity: isDisabled || isLoading ? 0.4 : 1,
               }}
             >
               {buttonText}

@@ -5,9 +5,41 @@ import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
 import { ASSETS } from "@/lib/constants";
+import { BridgeResult, useBridge } from "@/hooks/useBridge";
+import { NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { truncateAddress, formatNOCK } from "@/lib/utils";
+
+type ResultState =
+  | { type: "idle" }
+  | { type: "success"; result: BridgeResult }
+  | { type: "error"; message: string };
 
 export default function Home() {
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
+  const { inspectBridgeNotes } = useBridge();
+
+  const handleSwapSuccess = (result: BridgeResult) => {
+    setResultState({ type: "success", result });
+  };
+
+  const handleSwapError = (message: string) => {
+    setResultState({ type: "error", message });
+  };
+
+  const handleHomeClick = () => {
+    setResultState({ type: "idle" });
+  };
+
+  const handleInspectMetadata = async () => {
+    console.log("[Debug] Inspecting bridge metadata...");
+    const result = await inspectBridgeNotes();
+    if (result) {
+      console.log("[Debug] Bridge notes inspection complete:", result);
+    }
+  };
+
+  // Convert nicks to NOCK
+  const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
 
   return (
     <PageLayout>
@@ -45,18 +77,45 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Swap card or Success card */}
+          {/* Swap card or Result card */}
           <div style={{ marginTop: 31, width: 480 }}>
-            {showSuccess ? (
+            {resultState.type !== "idle" ? (
               <ResultCard
                 isDarkMode={isDarkMode}
-                status="success"
-                onHomeClick={() => setShowSuccess(false)}
+                status={resultState.type === "success" ? "success" : "failed"}
+                errorMessage={
+                  resultState.type === "error" ? resultState.message : undefined
+                }
+                networkFeePercent="0.5%"
+                networkFeeAmount={
+                  resultState.type === "success"
+                    ? `${formatNOCK(nicksToNock(resultState.result.fee))} NOCK`
+                    : "0 NOCK"
+                }
+                totalNock={
+                  resultState.type === "success"
+                    ? `${formatNOCK(nicksToNock(resultState.result.amountInNicks))} NOCK`
+                    : "0 NOCK"
+                }
+                totalUsd=""
+                receivingAddress={
+                  resultState.type === "success"
+                    ? truncateAddress(resultState.result.destinationAddress)
+                    : ""
+                }
+                transactionId={
+                  resultState.type === "success"
+                    ? truncateAddress(resultState.result.txId, 5)
+                    : ""
+                }
+                onHomeClick={handleHomeClick}
+                onInspectMetadata={handleInspectMetadata}
               />
             ) : (
               <SwapCard
                 isDarkMode={isDarkMode}
-                onSwapSuccess={() => setShowSuccess(true)}
+                onSwapSuccess={handleSwapSuccess}
+                onSwapError={handleSwapError}
               />
             )}
           </div>

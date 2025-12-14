@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@nockbox/iris-sdk": "^0.1.1",
+    "@nockbox/iris-wasm": "^0.1.2",
     "@scure/base": "^2.0.0",
     "@tanstack/react-query": "^5.90.11",
     "clsx": "^2.1.1",

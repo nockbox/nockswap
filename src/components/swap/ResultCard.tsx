@@ -17,6 +17,7 @@ interface ResultCardProps {
   receivingAddress?: string;
   transactionId?: string;
   onHomeClick?: () => void;
+  onInspectMetadata?: () => Promise<void>;
 }
 
 export default function ResultCard({
@@ -30,8 +31,10 @@ export default function ResultCard({
   receivingAddress = "Ma5JW...Dnal5",
   transactionId = "0xaa1...51a7d",
   onHomeClick,
+  onInspectMetadata,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
 
   const isSuccess = status === "success";
   const theme = getCardTheme(isDarkMode);
@@ -49,6 +52,16 @@ export default function ResultCard({
   const handleOpenTransaction = () => {
     // In real app, this would open the block explorer
     console.log("Opening transaction:", transactionId);
+  };
+
+  const handleInspectMetadata = async () => {
+    if (!onInspectMetadata) return;
+    setInspecting(true);
+    try {
+      await onInspectMetadata();
+    } finally {
+      setInspecting(false);
+    }
   };
 
   return (
@@ -632,6 +645,46 @@ export default function ResultCard({
           </div>
         </div>
       </div>
+
+      {/* TODO: Remove, only for testing  */}
+      {/* Debug: Inspect Metadata button */}
+      {isSuccess && onInspectMetadata && (
+        <button
+          onClick={handleInspectMetadata}
+          disabled={inspecting}
+          style={{
+            display: "flex",
+            width: "100%",
+            height: 44,
+            padding: "12px 20px",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 10,
+            borderRadius: 8,
+            background: "transparent",
+            border: `1px solid ${theme.cardBorder}`,
+            cursor: inspecting ? "wait" : "pointer",
+            boxSizing: "border-box",
+            opacity: inspecting ? 0.6 : 1,
+          }}
+        >
+          <span
+            style={{
+              color: theme.textPrimary,
+              textAlign: "center",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 14,
+              fontStyle: "normal",
+              fontWeight: 500,
+              lineHeight: "20px",
+              letterSpacing: 0.14,
+              opacity: 0.7,
+            }}
+          >
+            {inspecting ? "Inspecting..." : "Inspect Bridge Metadata (Debug)"}
+          </span>
+        </button>
+      )}
 
       {/* Back to home button */}
       <button

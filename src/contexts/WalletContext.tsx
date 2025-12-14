@@ -18,6 +18,12 @@ import {
 // 1 NOCK = 65,536 nicks
 export const NOCK_TO_NICKS = 65_536;
 
+interface SignRawTxParams {
+  rawTx: unknown;
+  notes: unknown[];
+  spendConditions: unknown[];
+}
+
 interface WalletContextType {
   // State
   isInstalled: boolean;
@@ -31,6 +37,7 @@ interface WalletContextType {
   connect: () => Promise<void>;
   disconnect: () => void;
   sendTransaction: (to: string, amountInNocks: number) => Promise<string>;
+  signRawTx: (params: SignRawTxParams) => Promise<Uint8Array>;
 
   // Helpers
   formatAddress: (address: string) => string;
@@ -62,10 +69,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           const p = new NockchainProvider();
           setProvider(p);
 
-          // Check if already connected
+          // Check if already connected. If so, reconnect to get grpcEndpoint
           if (p.isConnected && p.accounts.length > 0) {
-            setIsConnected(true);
-            setAddress(p.accounts[0]);
+            p.connect()
+              .then(({ pkh, grpcEndpoint: endpoint }) => {
+                setAddress(pkh);
+                setGrpcEndpoint(endpoint);
+                setIsConnected(true);
+              })
+              .catch((err) => {
+                console.error("Failed to reconnect wallet:", err);
+                // Still set what we have from the cached state
+                setIsConnected(true);
+                setAddress(p.accounts[0]);
+              });
           }
 
           // Listen for account changes
@@ -157,6 +174,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [provider, isConnected]
   );
 
+  const signRawTx = useCallback(
+    async (params: SignRawTxParams): Promise<Uint8Array> => {
+      if (!provider) {
+        throw new Error("Wallet not connected");
+      }
+
+      if (!isConnected) {
+        throw new NoAccountError();
+      }
+
+      return provider.signRawTx({
+        rawTx: params.rawTx,
+        notes: params.notes,
+        spendConditions: params.spendConditions,
+      });
+    },
+    [provider, isConnected]
+  );
+
   const formatAddress = useCallback((addr: string): string => {
     if (!addr || addr.length < 12) return addr;
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -172,6 +208,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     connect,
     disconnect,
     sendTransaction,
+    signRawTx,
     formatAddress,
   };
 
