@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
@@ -27,8 +28,8 @@ export default function SwapCard({
   onSwapError,
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
-  // true = Nockchain -> Base, false = Base -> Nockchain
-  const [isNockchainToBase, setIsNockchainToBase] = useState(true);
+  // Currently only supports Nockchain -> Base direction
+  const isNockchainToBase = true;
   const [showAddressError, setShowAddressError] = useState(false);
 
   // Fetch NOCK price from CoinGecko
@@ -298,12 +299,12 @@ export default function SwapCard({
                       flexShrink: 0,
                     }}
                   >
-                    <img
+                    <Image
                       src={ASSETS.nockToken}
                       alt="NOCK"
+                      width={40}
+                      height={40}
                       style={{
-                        width: 40,
-                        height: 40,
                         borderRadius: "50%",
                         filter: isDarkMode ? "invert(1)" : "none",
                       }}
@@ -322,12 +323,12 @@ export default function SwapCard({
                         background: "#1a1a1a",
                       }}
                     >
-                      <img
+                      <Image
                         src={ASSETS.nockchainIcon}
                         alt="Nockchain"
+                        width={18}
+                        height={18}
                         style={{
-                          width: "100%",
-                          height: "100%",
                           objectFit: "cover",
                         }}
                       />
@@ -375,12 +376,12 @@ export default function SwapCard({
                       fromSecondary
                     )}
                   </span>
-                  <img
+                  <Image
                     src={ASSETS.upDownArrows2}
                     alt="Toggle USD/NOCK"
+                    width={14}
+                    height={14}
                     style={{
-                      width: 14,
-                      height: 14,
                       opacity: 0.5,
                     }}
                   />
@@ -401,12 +402,12 @@ export default function SwapCard({
               border: "none",
             }}
           >
-            <img
+            <Image
               src={ASSETS.downArrow}
               alt="To"
+              width={24}
+              height={24}
               style={{
-                width: 24,
-                height: 24,
                 filter: isDarkMode ? "invert(1)" : "none",
               }}
             />
@@ -541,12 +542,12 @@ export default function SwapCard({
                       flexShrink: 0,
                     }}
                   >
-                    <img
+                    <Image
                       src={ASSETS.nockToken}
                       alt="NOCK"
+                      width={40}
+                      height={40}
                       style={{
-                        width: 40,
-                        height: 40,
                         borderRadius: "50%",
                         filter: isDarkMode ? "invert(1)" : "none",
                       }}
@@ -565,12 +566,12 @@ export default function SwapCard({
                         background: "#fff",
                       }}
                     >
-                      <img
+                      <Image
                         src={ASSETS.baseLogo}
                         alt="Base"
+                        width={18}
+                        height={18}
                         style={{
-                          width: "100%",
-                          height: "100%",
                           objectFit: "cover",
                         }}
                       />
@@ -618,12 +619,12 @@ export default function SwapCard({
                       toSecondary
                     )}
                   </span>
-                  <img
+                  <Image
                     src={ASSETS.upDownArrows2}
                     alt="Toggle USD/NOCK"
+                    width={14}
+                    height={14}
                     style={{
-                      width: 14,
-                      height: 14,
                       opacity: 0.5,
                     }}
                   />
@@ -732,17 +733,16 @@ export default function SwapCard({
                         background: isNockchainToBase ? "#fff" : "#1a1a1a",
                       }}
                     >
-                      {/* TODO change to <Image /> ? */}
-                      <img
+                      <Image
                         src={
                           isNockchainToBase
                             ? ASSETS.baseLogo
                             : ASSETS.nockchainIcon
                         }
                         alt={isNockchainToBase ? "Base" : "Nockchain"}
+                        width={14}
+                        height={14}
                         style={{
-                          width: "100%",
-                          height: "100%",
                           objectFit: "cover",
                         }}
                       />
