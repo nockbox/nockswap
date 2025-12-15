@@ -95,7 +95,8 @@ export default function SwapCard({
 
     try {
       const result = await bridgeToBase(receivingAddress, nockAmount);
-      if (onSwapSuccess) {
+      // bridgeToBase returns undefined (without throwing) if user cancels
+      if (result && onSwapSuccess) {
         onSwapSuccess(result);
       }
     } catch (err) {

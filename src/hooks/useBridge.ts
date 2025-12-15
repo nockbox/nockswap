@@ -384,16 +384,25 @@ export function useBridge(): UseBridgeReturn {
         setStatus("success");
         return bridgeResult;
       } catch (err) {
-        console.error("Bridge error (raw):", err);
-        let message: string;
-        if (err instanceof Error) {
-          message = err.message;
-        } else if (typeof err === "object" && err !== null) {
-          message = JSON.stringify(err);
-        } else {
-          message = String(err) || "Bridge transaction failed";
+        // Extract error message
+        const message =
+          err instanceof Error ? err.message : String(err) || "Bridge transaction failed";
+
+        // Check if user cancelled/rejected the transaction
+        const isCancellation =
+          message.toLowerCase().includes("reject") ||
+          message.toLowerCase().includes("cancel") ||
+          message.toLowerCase().includes("denied");
+
+        if (isCancellation) {
+          // Reset to idle state for user-initiated cancellations (don't throw)
+          setStatus("idle");
+          setError(null);
+          return undefined as unknown as BridgeResult;
         }
-        console.error("Bridge error (message):", message);
+
+        // Actual error - set error state and throw
+        console.error("Bridge error:", message);
         setError(message);
         setStatus("error");
         throw err;

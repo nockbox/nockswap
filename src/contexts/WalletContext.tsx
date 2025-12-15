@@ -184,11 +184,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new NoAccountError();
       }
 
-      return provider.signRawTx({
-        rawTx: params.rawTx,
-        notes: params.notes,
-        spendConditions: params.spendConditions,
-      });
+      try {
+        return await provider.signRawTx({
+          rawTx: params.rawTx,
+          notes: params.notes,
+          spendConditions: params.spendConditions,
+        });
+      } catch (err) {
+        // Check if it's a user rejection
+        if (err instanceof UserRejectedError) {
+          throw new Error("User rejected the transaction");
+        }
+
+        // TODO: This workaround can be removed when iris wallet fix is merged
+        if (err instanceof Error && err.message === "[object Object]") {
+          throw new Error("User cancelled the transaction");
+        }
+
+        // Re-throw with better message if possible
+        throw err;
+      }
     },
     [provider, isConnected]
   );
