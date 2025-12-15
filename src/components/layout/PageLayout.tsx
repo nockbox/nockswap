@@ -48,9 +48,11 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
       <div
         style={{
           position: "relative",
-          height: "100vh",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
           background: theme.background,
-          overflow: "hidden",
+          overflow: "auto",
         }}
       >
         {/* Background decorative elements */}
@@ -206,10 +208,9 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
             flexDirection: "column",
             alignItems: "center",
             paddingTop: 80,
-            paddingBottom: 80,
-            height: "100vh",
+            paddingBottom: 100,
+            flex: 1,
             boxSizing: "border-box",
-            overflow: "hidden",
             ...mainStyle,
           }}
         >
@@ -219,14 +220,11 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
         {/* Footer */}
         <footer
           style={{
-            position: "absolute",
-            bottom: 30,
-            left: 0,
-            right: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             gap: 24,
+            padding: "30px 0",
             zIndex: 15,
           }}
         >

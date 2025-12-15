@@ -831,7 +831,7 @@ export default function SwapCard({
               borderRadius: 8,
               background: isDisabled || isLoading ? "#f6f5f1" : "#ffc413",
               border: "none",
-              cursor: isDisabled || isLoading ? "not-allowed" : "pointer",
+              cursor: isDisabled || isLoading ? "auto" : "pointer",
               boxSizing: "border-box",
             }}
           >
