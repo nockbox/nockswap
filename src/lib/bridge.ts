@@ -13,9 +13,27 @@ export const GOLDILOCKS_PRIME = 2n ** 64n - 2n ** 32n + 1n;
 // Bridge note data key
 export const BRIDGE_NOTE_KEY = "%bridge";
 
-// Zorp bridge address
-export const ZORP_BRIDGE_ADDRESS: string | null =
-  process.env.NEXT_PUBLIC_ZORP_BRIDGE_ADDRESS || null;
+// Zorp bridge multisig configuration
+export const ZORP_BRIDGE_THRESHOLD: number = parseInt(
+  process.env.NEXT_PUBLIC_ZORP_BRIDGE_THRESHOLD || "",
+  10
+);
+
+export const ZORP_BRIDGE_ADDRESSES: string[] = (
+  process.env.NEXT_PUBLIC_ZORP_BRIDGE_ADDRESSES || ""
+)
+  .split(",")
+  .map((addr) => addr.trim())
+  .filter((addr) => addr.length > 0);
+
+// Helper to check if bridge is configured
+export const isBridgeConfigured = (): boolean => {
+  return (
+    ZORP_BRIDGE_ADDRESSES.length > 0 &&
+    ZORP_BRIDGE_THRESHOLD > 0 &&
+    ZORP_BRIDGE_THRESHOLD <= ZORP_BRIDGE_ADDRESSES.length
+  );
+};
 
 // Default fee rate: 0.5 NOCK per word (in nicks)
 export const DEFAULT_FEE_PER_WORD = 32768n;
@@ -200,8 +218,8 @@ export async function buildBridgeTransaction(
   params: BridgeTransactionParams
 ): Promise<BridgeTransactionResult> {
   // Check bridge is configured
-  if (!ZORP_BRIDGE_ADDRESS) {
-    throw new Error("Bridge not configured: ZORP_BRIDGE_ADDRESS is not set");
+  if (!isBridgeConfigured()) {
+    throw new Error("Bridge not configured");
   }
 
   // Validate destination address
@@ -226,8 +244,11 @@ export async function buildBridgeTransaction(
   const bridgeEntry = new wasm.NoteDataEntry(BRIDGE_NOTE_KEY, jammedBridgeData);
   const noteData = new wasm.NoteData([bridgeEntry]);
 
-  // Derive lock root from PKH spend condition
-  const bridgePkh = wasm.Pkh.single(ZORP_BRIDGE_ADDRESS);
+  // Derive lock root from multisig PKH spend condition
+  const bridgePkh = new wasm.Pkh(
+    BigInt(ZORP_BRIDGE_THRESHOLD),
+    ZORP_BRIDGE_ADDRESSES
+  );
   const bridgeSpendCondition = wasm.SpendCondition.newPkh(bridgePkh);
   const zorpLockRoot = wasm.LockRoot.fromSpendCondition(bridgeSpendCondition);
 

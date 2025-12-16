@@ -3,7 +3,9 @@
 import { useState, useCallback, useRef } from "react";
 import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
 import {
-  ZORP_BRIDGE_ADDRESS,
+  ZORP_BRIDGE_THRESHOLD,
+  ZORP_BRIDGE_ADDRESSES,
+  isBridgeConfigured as checkBridgeConfigured,
   BRIDGE_NOTE_KEY,
   DEFAULT_FEE_PER_WORD,
   evmAddressToBelts,
@@ -74,7 +76,7 @@ export function useBridge(): UseBridgeReturn {
   // Keep a ref to the grpc client to avoid recreating
   const grpcClientRef = useRef<unknown>(null);
 
-  const isBridgeConfigured = ZORP_BRIDGE_ADDRESS !== null;
+  const isBridgeConfigured = checkBridgeConfigured();
 
   const validateDestination = useCallback(
     (destinationAddress: string): { valid: boolean; error?: string } => {
@@ -135,10 +137,8 @@ export function useBridge(): UseBridgeReturn {
         throw new Error("gRPC endpoint not available");
       }
 
-      if (!isBridgeConfigured || !ZORP_BRIDGE_ADDRESS) {
-        throw new Error(
-          "Bridge not configured: Zorp bridge address not available"
-        );
+      if (!isBridgeConfigured) {
+        throw new Error("Bridge not configured");
       }
 
       setStatus("pending");
@@ -318,8 +318,11 @@ export function useBridge(): UseBridgeReturn {
             );
             const noteData = new wasm.NoteData([bridgeEntry]);
 
-            // Derive lock root from PKH spend condition
-            const bridgePkh = wasm.Pkh.single(ZORP_BRIDGE_ADDRESS);
+            // Derive lock root from multisig PKH spend condition
+            const bridgePkh = new wasm.Pkh(
+              BigInt(ZORP_BRIDGE_THRESHOLD),
+              ZORP_BRIDGE_ADDRESSES
+            );
             const bridgeSpendCondition = wasm.SpendCondition.newPkh(bridgePkh);
             const zorpLockRoot =
               wasm.LockRoot.fromSpendCondition(bridgeSpendCondition);
@@ -386,7 +389,9 @@ export function useBridge(): UseBridgeReturn {
       } catch (err) {
         // Extract error message
         const message =
-          err instanceof Error ? err.message : String(err) || "Bridge transaction failed";
+          err instanceof Error
+            ? err.message
+            : String(err) || "Bridge transaction failed";
 
         // Check if user cancelled/rejected the transaction
         const isCancellation =
@@ -425,8 +430,8 @@ export function useBridge(): UseBridgeReturn {
       noteData: Array<{ key: string; blob: Uint8Array; decoded?: unknown }>;
     }>;
   } | null> => {
-    if (!grpcEndpoint || !ZORP_BRIDGE_ADDRESS) {
-      console.error("[Debug] Missing grpcEndpoint or bridge address");
+    if (!grpcEndpoint || !isBridgeConfigured) {
+      console.error("[Debug] Missing grpcEndpoint or bridge not configured");
       return null;
     }
 
@@ -440,14 +445,20 @@ export function useBridge(): UseBridgeReturn {
       // Create gRPC client
       const grpcClient = new wasm.GrpcClient(grpcEndpoint);
 
-      // Derive first-name for bridge address
-      const bridgePkh = wasm.Pkh.single(ZORP_BRIDGE_ADDRESS);
+      // Derive first-name for bridge address (multisig)
+      const bridgePkh = new wasm.Pkh(
+        BigInt(ZORP_BRIDGE_THRESHOLD),
+        ZORP_BRIDGE_ADDRESSES
+      );
       const bridgeSpendCondition = wasm.SpendCondition.newPkh(bridgePkh);
       const bridgeFirstName = bridgeSpendCondition.firstName();
 
       console.log(
-        "[Debug] Fetching notes for bridge address:",
-        ZORP_BRIDGE_ADDRESS
+        "[Debug] Fetching notes for bridge (threshold:",
+        ZORP_BRIDGE_THRESHOLD,
+        "addresses:",
+        ZORP_BRIDGE_ADDRESSES.length,
+        ")"
       );
       console.log(
         "[Debug] Bridge first-name:",
@@ -601,7 +612,7 @@ export function useBridge(): UseBridgeReturn {
       console.error("[Debug] Error inspecting bridge notes:", err);
       return null;
     }
-  }, [grpcEndpoint]);
+  }, [grpcEndpoint, isBridgeConfigured]);
 
   return {
     status,
