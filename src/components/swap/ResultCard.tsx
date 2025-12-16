@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ASSETS } from "@/lib/constants";
+import { ASSETS, PROTOCOL_FEE_DISPLAY } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 
 type ResultStatus = "success" | "failed";
@@ -24,7 +24,7 @@ export default function ResultCard({
   isDarkMode = false,
   status = "success",
   errorMessage = "Transaction was rejected by the network",
-  networkFeePercent = "0.5%",
+  networkFeePercent = PROTOCOL_FEE_DISPLAY,
   networkFeeAmount = "500 NOCK",
   totalUsd = "≈$4,996.85",
   totalNock = "99,500 NOCK",

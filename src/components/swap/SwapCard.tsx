@@ -10,6 +10,7 @@ import {
   NOCK_COINGECKO_ID,
   ASSETS,
   IRIS_CHROME_STORE_URL,
+  PROTOCOL_FEE_DISPLAY,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
@@ -642,7 +643,7 @@ export default function SwapCard({
                     opacity: 0.5,
                   }}
                 >
-                  Bridge fee 0.5%
+                  Bridge fee {PROTOCOL_FEE_DISPLAY}
                 </span>
               </div>
             </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
-import { ASSETS } from "@/lib/constants";
+import { ASSETS, PROTOCOL_FEE_DISPLAY } from "@/lib/constants";
 import { BridgeResult, useBridge } from "@/hooks/useBridge";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
@@ -86,7 +86,7 @@ export default function Home() {
                 errorMessage={
                   resultState.type === "error" ? resultState.message : undefined
                 }
-                networkFeePercent="0.5%"
+                networkFeePercent={PROTOCOL_FEE_DISPLAY}
                 networkFeeAmount={
                   resultState.type === "success"
                     ? `${formatNOCK(nicksToNock(resultState.result.fee))} NOCK`
