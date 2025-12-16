@@ -78,17 +78,17 @@ export function truncateAddress(address: string, chars: number = 6): string {
 /**
  * Apply bridge fee to an amount (subtract fee)
  * @param amount - The amount before fee
- * @param feeBps - Fee in basis points (default 50 = 0.5%)
+ * @param feeBps - Fee in basis points (default 30 = 0.3%)
  */
-export function applyFee(amount: number, feeBps: number = 50): number {
+export function applyFee(amount: number, feeBps: number = 30): number {
   return amount * (1 - feeBps / 10000);
 }
 
 /**
  * Reverse bridge fee calculation (get original amount from after-fee amount)
  * @param amount - The amount after fee was applied
- * @param feeBps - Fee in basis points (default 50 = 0.5%)
+ * @param feeBps - Fee in basis points (default 30 = 0.3%)
  */
-export function reverseFee(amount: number, feeBps: number = 50): number {
+export function reverseFee(amount: number, feeBps: number = 30): number {
   return amount / (1 - feeBps / 10000);
 }

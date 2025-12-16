@@ -1,4 +1,4 @@
-export const PROTOCOL_FEE_BPS = 50; // 0.5% fee
+export const PROTOCOL_FEE_BPS = 30; // 0.3% fee
 
 export const NOCK_COINGECKO_ID = "nockchain";
 
