@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import LearnMoreModal from "@/components/modal/LearnMoreModal";
 import { ASSETS } from "@/lib/constants";
+import { useWallet } from "@/hooks/useWallet";
+import { truncateAddress } from "@/lib/utils";
 
 export interface Theme {
   background: string;
@@ -27,6 +29,7 @@ interface PageLayoutProps {
 export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showLearnMore, setShowLearnMore] = useState(false);
+  const { isConnected, address } = useWallet();
 
   const theme: Theme = {
     background: isDarkMode ? "#000" : "#f6f5f1",
@@ -164,39 +167,77 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
             />
           </Link>
 
-          <button
-            onClick={() => setShowLearnMore(true)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "12px 14px",
-              background: theme.headerButtonBg,
-              border: `1px solid ${theme.headerButtonBorder}`,
-              borderRadius: 58,
-              cursor: "pointer",
-              color: theme.textPrimary,
-            }}
-          >
-            <img
-              src="/assets/information.svg"
-              alt="Info"
-              style={{ width: 16, height: 16 }}
-            />
-            <span
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setShowLearnMore(true)}
               style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px 14px",
+                background: theme.headerButtonBg,
+                border: `1px solid ${theme.headerButtonBorder}`,
+                borderRadius: 58,
+                cursor: "pointer",
                 color: theme.textPrimary,
-                textAlign: "center",
-                fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
-                fontStyle: "normal",
-                fontWeight: 500,
-                lineHeight: "16px",
               }}
             >
-              Learn more
-            </span>
-          </button>
+              <img
+                src="/assets/information.svg"
+                alt="Info"
+                style={{ width: 16, height: 16 }}
+              />
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  textAlign: "center",
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "16px",
+                }}
+              >
+                Learn more
+              </span>
+            </button>
+            {isConnected && address && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "12px 14px",
+                  background: theme.headerButtonBg,
+                  border: `1px solid ${theme.headerButtonBorder}`,
+                  borderRadius: 58,
+                  color: theme.textPrimary,
+                }}
+              >
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#369929",
+                  }}
+                />
+                <span
+                  style={{
+                    color: theme.textPrimary,
+                    textAlign: "center",
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 15,
+                    fontStyle: "normal",
+                    fontWeight: 500,
+                    lineHeight: "16px",
+                  }}
+                >
+                  {truncateAddress(address, 5)}
+                </span>
+              </div>
+            )}
+          </div>
         </header>
 
         {/* Main content */}
