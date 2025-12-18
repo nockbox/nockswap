@@ -6,25 +6,19 @@
  */
 
 import { isEvmAddress } from "./validators";
+import {
+  ZORP_BRIDGE_THRESHOLD,
+  ZORP_BRIDGE_ADDRESSES,
+} from "./constants";
+
+// Re-export for convenience
+export { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES };
 
 // Goldilocks prime: 2^64 - 2^32 + 1
 export const GOLDILOCKS_PRIME = 2n ** 64n - 2n ** 32n + 1n;
 
 // Bridge note data key
 export const BRIDGE_NOTE_KEY = "%bridge";
-
-// Zorp bridge multisig configuration
-export const ZORP_BRIDGE_THRESHOLD: number = parseInt(
-  process.env.NEXT_PUBLIC_ZORP_BRIDGE_THRESHOLD || "",
-  10
-);
-
-export const ZORP_BRIDGE_ADDRESSES: string[] = (
-  process.env.NEXT_PUBLIC_ZORP_BRIDGE_ADDRESSES || ""
-)
-  .split(",")
-  .map((addr) => addr.trim())
-  .filter((addr) => addr.length > 0);
 
 // Helper to check if bridge is configured
 export const isBridgeConfigured = (): boolean => {
