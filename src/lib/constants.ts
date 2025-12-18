@@ -1,6 +1,8 @@
 export const PROTOCOL_FEE_BPS = 30; // 0.3% fee
 export const PROTOCOL_FEE_DISPLAY = `${PROTOCOL_FEE_BPS / 100}%`; // "0.3%"
 
+export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
+
 export const NOCK_COINGECKO_ID = "nockchain";
 
 // Iris Wallet

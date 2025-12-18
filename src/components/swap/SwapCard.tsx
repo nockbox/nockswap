@@ -11,6 +11,7 @@ import {
   ASSETS,
   IRIS_CHROME_STORE_URL,
   PROTOCOL_FEE_DISPLAY,
+  MIN_BRIDGE_AMOUNT_NOCK,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
@@ -32,6 +33,7 @@ export default function SwapCard({
   // Currently only supports Nockchain -> Base direction
   const isNockchainToBase = true;
   const [showAddressError, setShowAddressError] = useState(false);
+  const [showAmountError, setShowAmountError] = useState(false);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
@@ -68,6 +70,13 @@ export default function SwapCard({
   // Balance check not currently doable
   // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
   const hasInsufficientFunds = false;
+
+  // Check if amount is below minimum bridge amount
+  const parsedFromAmount = parseAmount(fromAmount);
+  const isBelowMinimum =
+    fromAmount.trim().length > 0 &&
+    parsedFromAmount > 0 &&
+    parsedFromAmount < MIN_BRIDGE_AMOUNT_NOCK;
 
   // Address validation
   const isAddressValid =
@@ -178,12 +187,14 @@ export default function SwapCard({
               borderRadius: 12,
               background: theme.sectionBg,
               boxSizing: "border-box",
-              border: hasInsufficientFunds
-                ? `1px solid ${theme.error}`
-                : "none",
-              boxShadow: hasInsufficientFunds
-                ? `0px 0px 0px 3px ${theme.errorGlow}`
-                : "none",
+              border:
+                hasInsufficientFunds || (showAmountError && isBelowMinimum)
+                  ? `1px solid ${theme.error}`
+                  : "none",
+              boxShadow:
+                hasInsufficientFunds || (showAmountError && isBelowMinimum)
+                  ? `0px 0px 0px 3px ${theme.errorGlow}`
+                  : "none",
             }}
           >
             <div
@@ -227,8 +238,14 @@ export default function SwapCard({
                 <input
                   type="text"
                   value={fromAmount}
-                  onChange={(e) => handleFromAmountChange(e.target.value)}
-                  onBlur={() => handleAmountBlur(fromAmount, setFromAmount)}
+                  onChange={(e) => {
+                    handleFromAmountChange(e.target.value);
+                    setShowAmountError(false);
+                  }}
+                  onBlur={() => {
+                    handleAmountBlur(fromAmount, setFromAmount);
+                    if (isBelowMinimum) setShowAmountError(true);
+                  }}
                   placeholder="0"
                   style={{
                     fontFamily: "var(--font-lora), serif",
@@ -387,6 +404,22 @@ export default function SwapCard({
                     }}
                   />
                 </button>
+                {showAmountError && isBelowMinimum && (
+                  <span
+                    style={{
+                      color: theme.error,
+                      textAlign: "right",
+                      fontFamily: "var(--font-inter), sans-serif",
+                      fontSize: 13,
+                      fontStyle: "normal",
+                      fontWeight: 500,
+                      lineHeight: "15px",
+                      letterSpacing: 0.13,
+                    }}
+                  >
+                    Minimum {MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -815,7 +848,7 @@ export default function SwapCard({
           // Connected - check if form is complete
           const hasAmount = fromAmount.trim().length > 0;
           const hasAddress = receivingAddress.trim().length > 0;
-          isDisabled = !hasAmount || !hasAddress;
+          isDisabled = !hasAmount || !hasAddress || isBelowMinimum;
         }
 
         return (

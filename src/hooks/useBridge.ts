@@ -13,6 +13,7 @@ import {
   buildBridgeNoun,
 } from "@/lib/bridge";
 import { isEvmAddress } from "@/lib/validators";
+import { MIN_BRIDGE_AMOUNT_NOCK } from "@/lib/constants";
 
 export type BridgeStatus =
   | "idle"
@@ -155,6 +156,9 @@ export function useBridge(): UseBridgeReturn {
         // Validate amount
         if (amountInNocks <= 0) {
           throw new Error("Amount must be greater than 0");
+        }
+        if (amountInNocks < MIN_BRIDGE_AMOUNT_NOCK) {
+          throw new Error(`Minimum bridge amount is ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`);
         }
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
