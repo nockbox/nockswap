@@ -128,8 +128,9 @@ export default function SwapCard({
     <div
       style={{
         display: "flex",
-        width: 480,
-        height: 546,
+        width: "100%",
+        maxWidth: 480,
+        minHeight: 546,
         padding: 20,
         flexDirection: "column",
         justifyContent: "space-between",
@@ -857,7 +858,7 @@ export default function SwapCard({
             disabled={isDisabled || isLoading}
             style={{
               display: "flex",
-              width: 440,
+              width: "100%",
               height: 56,
               padding: "17px 20px",
               justifyContent: "center",
