@@ -113,6 +113,11 @@ export default function Home() {
                     ? truncateAddress(resultState.result.txId, 5)
                     : ""
                 }
+                fullTransactionId={
+                  resultState.type === "success"
+                    ? resultState.result.txId
+                    : ""
+                }
                 onHomeClick={handleHomeClick}
                 onInspectMetadata={handleInspectMetadata}
               />

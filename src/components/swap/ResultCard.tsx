@@ -17,6 +17,7 @@ interface ResultCardProps {
   receivingAddress?: string;
   fullReceivingAddress?: string;
   transactionId?: string;
+  fullTransactionId?: string;
   onHomeClick?: () => void;
   onInspectMetadata?: () => Promise<void>;
 }
@@ -32,6 +33,7 @@ export default function ResultCard({
   receivingAddress = "",
   fullReceivingAddress,
   transactionId = "",
+  fullTransactionId,
   onHomeClick,
   onInspectMetadata,
 }: ResultCardProps) {
@@ -53,8 +55,10 @@ export default function ResultCard({
   };
 
   const handleOpenTransaction = () => {
-    // In real app, this would open the block explorer
-    console.log("Opening transaction:", transactionId);
+    const txId = fullTransactionId || transactionId;
+    if (txId) {
+      window.open(`https://nockscan.net/tx/${txId}`, "_blank");
+    }
   };
 
   const handleInspectMetadata = async () => {
