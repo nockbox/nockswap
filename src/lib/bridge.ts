@@ -6,10 +6,7 @@
  */
 
 import { isEvmAddress } from "./validators";
-import {
-  ZORP_BRIDGE_THRESHOLD,
-  ZORP_BRIDGE_ADDRESSES,
-} from "./constants";
+import { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES } from "./constants";
 
 // Re-export for convenience
 export { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES };
