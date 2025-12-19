@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ASSETS, PROTOCOL_FEE_DISPLAY } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 
 type ResultStatus = "success" | "failed";
 
@@ -39,6 +40,7 @@ export default function ResultCard({
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [inspecting, setInspecting] = useState(false);
+  const isMobile = useIsMobile();
 
   const isSuccess = status === "success";
   const theme = getCardTheme(isDarkMode);
@@ -75,11 +77,12 @@ export default function ResultCard({
     <div
       style={{
         display: "flex",
-        width: 480,
-        padding: 20,
+        width: "100%",
+        maxWidth: isMobile ? 358 : 480,
+        padding: isMobile ? 16 : 20,
         flexDirection: "column",
         alignItems: "center",
-        gap: 20,
+        gap: isMobile ? 15 : 20,
         borderRadius: 16,
         border: `1px solid ${theme.cardBorder}`,
         background: theme.cardBg,
@@ -91,10 +94,13 @@ export default function ResultCard({
       <div
         style={{
           display: "flex",
-          flexDirection: "column",
+          flexDirection: isMobile ? "row" : "column",
           alignItems: "center",
+          justifyContent: isMobile ? "center" : "flex-start",
           gap: 12,
           width: "100%",
+          paddingLeft: isMobile ? 0 : 0,
+          paddingRight: isMobile ? 20 : 0,
         }}
       >
         {/* Status icon */}
@@ -102,8 +108,8 @@ export default function ResultCard({
           src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
           alt={isSuccess ? "Success" : "Failed"}
           style={{
-            width: 64,
-            height: 64,
+            width: isMobile ? 52 : 64,
+            height: isMobile ? 52 : 64,
           }}
         />
 
@@ -112,19 +118,19 @@ export default function ResultCard({
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: isMobile ? "flex-start" : "center",
             gap: 4,
           }}
         >
           <span
             style={{
               fontFamily: "var(--font-lora), serif",
-              fontSize: 36,
+              fontSize: isMobile ? 32 : 36,
               fontWeight: 600,
-              lineHeight: "40px",
-              letterSpacing: -0.72,
+              lineHeight: isMobile ? "36px" : "40px",
+              letterSpacing: isMobile ? -0.64 : -0.72,
               color: theme.textPrimary,
-              textAlign: "center",
+              textAlign: isMobile ? "left" : "center",
             }}
           >
             {isSuccess ? "Success" : "Failed"}
@@ -134,13 +140,13 @@ export default function ResultCard({
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 fontStyle: "normal",
                 fontWeight: 500,
                 lineHeight: "22px",
-                letterSpacing: 0.15,
+                letterSpacing: isMobile ? 0.14 : 0.15,
                 opacity: 0.5,
-                textAlign: "center",
+                textAlign: isMobile ? "left" : "center",
               }}
             >
               {errorMessage}
@@ -168,7 +174,7 @@ export default function ResultCard({
         <div
           style={{
             display: "flex",
-            padding: 16,
+            padding: isMobile ? 12 : 16,
             alignItems: "center",
             gap: 12,
             width: "100%",
@@ -241,11 +247,11 @@ export default function ResultCard({
                 style={{
                   color: theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 15,
+                  fontSize: isMobile ? 14 : 15,
                   fontStyle: "normal",
                   fontWeight: 500,
                   lineHeight: "22px",
-                  letterSpacing: 0.15,
+                  letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
               >
                 NOCK
@@ -271,7 +277,7 @@ export default function ResultCard({
           <div
             style={{
               display: "flex",
-              padding: "8px 16px",
+              padding: isMobile ? "6px 10px" : "8px 16px",
               alignItems: "center",
               justifyContent: "center",
               gap: 10,
@@ -313,11 +319,11 @@ export default function ResultCard({
                   color: theme.textPrimary,
                   textAlign: "right",
                   fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 15,
+                  fontSize: isMobile ? 14 : 15,
                   fontStyle: "normal",
                   fontWeight: 500,
                   lineHeight: "22px",
-                  letterSpacing: 0.15,
+                  letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
               >
                 NOCK
@@ -388,11 +394,11 @@ export default function ResultCard({
         <div
           style={{
             display: "flex",
-            padding: 16,
+            padding: isMobile ? 12 : 16,
             flexDirection: "column",
             alignItems: "flex-start",
             justifyContent: "center",
-            gap: 12,
+            gap: isMobile ? 8 : 12,
             width: "100%",
             borderRadius: 8,
             background: theme.inputBg,
@@ -412,12 +418,11 @@ export default function ResultCard({
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 fontStyle: "normal",
                 fontWeight: 500,
                 lineHeight: "22px",
-                letterSpacing: 0.15,
-                opacity: 0.5,
+                letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
               Bridge fee {networkFeePercent}
@@ -426,11 +431,11 @@ export default function ResultCard({
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 fontStyle: "normal",
                 fontWeight: 500,
                 lineHeight: "22px",
-                letterSpacing: 0.15,
+                letterSpacing: isMobile ? 0.14 : 0.15,
                 opacity: 0.5,
               }}
             >
@@ -443,7 +448,7 @@ export default function ResultCard({
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: "flex-start",
               width: "100%",
             }}
           >
@@ -451,11 +456,11 @@ export default function ResultCard({
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 fontStyle: "normal",
                 fontWeight: 500,
                 lineHeight: "22px",
-                letterSpacing: 0.15,
+                letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
               You will receive
@@ -471,11 +476,11 @@ export default function ResultCard({
                 style={{
                   color: theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 15,
+                  fontSize: isMobile ? 14 : 15,
                   fontStyle: "normal",
                   fontWeight: 500,
                   lineHeight: "22px",
-                  letterSpacing: 0.15,
+                  letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
               >
                 {totalNock}
@@ -502,7 +507,7 @@ export default function ResultCard({
         <div
           style={{
             display: "flex",
-            padding: 16,
+            padding: isMobile ? 12 : 16,
             justifyContent: "space-between",
             alignItems: "center",
             width: "100%",
@@ -515,12 +520,11 @@ export default function ResultCard({
             style={{
               color: theme.textPrimary,
               fontFamily: "var(--font-inter), sans-serif",
-              fontSize: 15,
+              fontSize: isMobile ? 14 : 15,
               fontStyle: "normal",
               fontWeight: 500,
               lineHeight: "22px",
-              letterSpacing: 0.15,
-              opacity: 0.5,
+              letterSpacing: isMobile ? 0.14 : 0.15,
             }}
           >
             Receiving address
@@ -532,6 +536,9 @@ export default function ResultCard({
                 height: 14,
                 borderRadius: 32,
                 overflow: "hidden",
+                border: `2px solid ${theme.networkBadgeBorder}`,
+                boxSizing: "border-box",
+                background: "#fff",
               }}
             >
               <img
@@ -548,11 +555,11 @@ export default function ResultCard({
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 fontStyle: "normal",
                 fontWeight: 500,
                 lineHeight: "22px",
-                letterSpacing: 0.15,
+                letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
               {receivingAddress}
@@ -589,7 +596,7 @@ export default function ResultCard({
         <div
           style={{
             display: "flex",
-            padding: 16,
+            padding: isMobile ? 12 : 16,
             justifyContent: "space-between",
             alignItems: "center",
             width: "100%",
@@ -602,12 +609,11 @@ export default function ResultCard({
             style={{
               color: theme.textPrimary,
               fontFamily: "var(--font-inter), sans-serif",
-              fontSize: 15,
+              fontSize: isMobile ? 14 : 15,
               fontStyle: "normal",
               fontWeight: 500,
               lineHeight: "22px",
-              letterSpacing: 0.15,
-              opacity: 0.5,
+              letterSpacing: isMobile ? 0.14 : 0.15,
             }}
           >
             Transaction ID
@@ -617,11 +623,11 @@ export default function ResultCard({
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 fontStyle: "normal",
                 fontWeight: 500,
                 lineHeight: "22px",
-                letterSpacing: 0.15,
+                letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
               {transactionId}

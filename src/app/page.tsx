@@ -52,8 +52,11 @@ export default function Home() {
               flexDirection: "column",
               alignItems: "center",
               gap: 5,
-              width: 560,
+              width: "100%",
+              maxWidth: 560,
               textAlign: "center",
+              padding: "0 16px",
+              boxSizing: "border-box",
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -62,8 +65,11 @@ export default function Home() {
                 isDarkMode ? ASSETS.nockswapHeaderDark : ASSETS.nockswapHeader
               }
               alt="Nock Swap"
-              width={320}
-              height={72}
+              style={{
+                width: "100%",
+                maxWidth: 320,
+                height: "auto",
+              }}
             />
             <p
               style={{
@@ -78,7 +84,15 @@ export default function Home() {
           </div>
 
           {/* Swap card or Result card */}
-          <div style={{ marginTop: 31, width: 480 }}>
+          <div
+            style={{
+              marginTop: 31,
+              width: "100%",
+              maxWidth: 480,
+              padding: "0 16px",
+              boxSizing: "border-box",
+            }}
+          >
             {resultState.type !== "idle" ? (
               <ResultCard
                 isDarkMode={isDarkMode}
