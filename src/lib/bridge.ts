@@ -111,8 +111,8 @@ export function bigintToAtom(n: bigint): string {
 /**
  * Build the bridge noun structure for an EVM address
  *
- * Creates: [%0 [%base [belt1 [belt2 belt3]]]]
- * - %0 = version tag (ASCII '0' = 48 = 0x30)
+ * Creates: [0 [%base [belt1 [belt2 belt3]]]]
+ * - 0 = version tag (integer zero)
  * - %base = chain identifier ("base" little-endian = 0x65736162)
  * - belt1, belt2, belt3 = EVM address encoded as 3 Goldilocks field elements
  *
@@ -122,12 +122,12 @@ export function bigintToAtom(n: bigint): string {
 export function buildBridgeNoun(evmAddress: string): unknown {
   const [belt1, belt2, belt3] = evmAddressToBelts(evmAddress);
 
-  // %0 in Hoon = character '0' = ASCII 48 = 0x30
-  const VERSION_TAG = "30";
+  // Version 0
+  const VERSION_TAG = "0";
   // %base = "base" in little-endian = 0x65736162
   const BASE_CHAIN_TAG = "65736162";
 
-  // Build noun structure: [%0 [%base [belt1 [belt2 belt3]]]]
+  // Build noun structure: [0 [%base [belt1 [belt2 belt3]]]]
   return [
     VERSION_TAG,
     [
