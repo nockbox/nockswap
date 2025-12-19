@@ -103,6 +103,11 @@ export default function Home() {
                     ? truncateAddress(resultState.result.destinationAddress)
                     : ""
                 }
+                fullReceivingAddress={
+                  resultState.type === "success"
+                    ? resultState.result.destinationAddress
+                    : ""
+                }
                 transactionId={
                   resultState.type === "success"
                     ? truncateAddress(resultState.result.txId, 5)

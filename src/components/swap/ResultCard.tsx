@@ -15,6 +15,7 @@ interface ResultCardProps {
   totalUsd?: string;
   totalNock?: string;
   receivingAddress?: string;
+  fullReceivingAddress?: string;
   transactionId?: string;
   onHomeClick?: () => void;
   onInspectMetadata?: () => Promise<void>;
@@ -29,6 +30,7 @@ export default function ResultCard({
   totalUsd = "≈$4,996.85",
   totalNock = "99,500 NOCK",
   receivingAddress = "Ma5JW...Dnal5",
+  fullReceivingAddress,
   transactionId = "0xaa1...51a7d",
   onHomeClick,
   onInspectMetadata,
@@ -41,7 +43,8 @@ export default function ResultCard({
 
   const handleCopyAddress = async () => {
     try {
-      await navigator.clipboard.writeText(receivingAddress);
+      const addressToCopy = fullReceivingAddress || receivingAddress;
+      await navigator.clipboard.writeText(addressToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
