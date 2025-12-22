@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_BPS } from "@/lib/constants";
+import {
+  ASSETS,
+  PROTOCOL_FEE_DISPLAY,
+  PROTOCOL_FEE_BPS,
+} from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { TransactionPreview, BridgeStatus } from "@/hooks/useBridge";
@@ -59,7 +63,8 @@ export default function ResultCard({
   // Calculate bridge fee for confirming state
   const calculateBridgeFee = (): string => {
     if (!preview) return "0 NOCK";
-    const bridgeFeeNicks = (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+    const bridgeFeeNicks =
+      (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
@@ -67,7 +72,8 @@ export default function ResultCard({
   // Calculate amount after bridge fee deduction
   const calculateAmountAfterBridgeFee = (): string => {
     if (!preview) return totalNock;
-    const bridgeFeeNicks = (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+    const bridgeFeeNicks =
+      (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
     const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
     const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
     return `${formatNOCK(amountNock)} NOCK`;
@@ -77,7 +83,11 @@ export default function ResultCard({
   const getReconstructedAddress = (): string => {
     if (!preview?.belts) return "";
     try {
-      return beltsToEvmAddress(preview.belts[0], preview.belts[1], preview.belts[2]);
+      return beltsToEvmAddress(
+        preview.belts[0],
+        preview.belts[1],
+        preview.belts[2]
+      );
     } catch {
       return "Error reconstructing";
     }
@@ -109,6 +119,23 @@ export default function ResultCard({
     } finally {
       setInspecting(false);
     }
+  };
+
+  const handleDownloadTransaction = () => {
+    if (!preview?.jammedNoteData) return;
+
+    // Download raw jammed bytes (copy to new ArrayBuffer for Blob compatibility)
+    const buffer = new ArrayBuffer(preview.jammedNoteData.length);
+    new Uint8Array(buffer).set(preview.jammedNoteData);
+    const blob = new Blob([buffer], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bridge-note-${Date.now()}.jam`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -171,10 +198,14 @@ export default function ResultCard({
               lineHeight: isMobile ? "36px" : "40px",
               letterSpacing: isMobile ? -0.64 : -0.72,
               color: theme.textPrimary,
-              textAlign: isConfirming ? "left" : (isMobile ? "left" : "center"),
+              textAlign: isConfirming ? "left" : isMobile ? "left" : "center",
             }}
           >
-            {isConfirming ? "Confirm Transaction" : (isSuccess ? "Success" : "Failed")}
+            {isConfirming
+              ? "Confirm Transaction"
+              : isSuccess
+              ? "Success"
+              : "Failed"}
           </span>
           {!isSuccess && !isConfirming && errorMessage && (
             <span
@@ -811,6 +842,37 @@ export default function ResultCard({
                 </span>
               </div>
             ))}
+            {/* Download button */}
+            <button
+              onClick={handleDownloadTransaction}
+              style={{
+                display: "flex",
+                width: "100%",
+                height: 36,
+                padding: "8px 12px",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 6,
+                background: "transparent",
+                border: `1px solid ${theme.cardBorder}`,
+                cursor: "pointer",
+                boxSizing: "border-box",
+                marginTop: 4,
+              }}
+            >
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  opacity: 0.7,
+                }}
+              >
+                Download Transaction
+              </span>
+            </button>
           </div>
         )}
       </div>
@@ -895,7 +957,10 @@ export default function ResultCard({
           {/* Confirm button */}
           <button
             onClick={onConfirm}
-            disabled={bridgeStatus === "awaiting_signature" || bridgeStatus === "pending"}
+            disabled={
+              bridgeStatus === "awaiting_signature" ||
+              bridgeStatus === "pending"
+            }
             style={{
               display: "flex",
               flex: 1,
@@ -905,9 +970,17 @@ export default function ResultCard({
               alignItems: "center",
               gap: 10,
               borderRadius: 8,
-              background: bridgeStatus === "awaiting_signature" || bridgeStatus === "pending" ? "#f6f5f1" : "#ffc413",
+              background:
+                bridgeStatus === "awaiting_signature" ||
+                bridgeStatus === "pending"
+                  ? "#f6f5f1"
+                  : "#ffc413",
               border: "none",
-              cursor: bridgeStatus === "awaiting_signature" || bridgeStatus === "pending" ? "wait" : "pointer",
+              cursor:
+                bridgeStatus === "awaiting_signature" ||
+                bridgeStatus === "pending"
+                  ? "wait"
+                  : "pointer",
               boxSizing: "border-box",
             }}
           >
@@ -921,11 +994,18 @@ export default function ResultCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
-                opacity: bridgeStatus === "awaiting_signature" || bridgeStatus === "pending" ? 0.4 : 1,
+                opacity:
+                  bridgeStatus === "awaiting_signature" ||
+                  bridgeStatus === "pending"
+                    ? 0.4
+                    : 1,
               }}
             >
-              {bridgeStatus === "awaiting_signature" ? "Approve in Wallet..." :
-               bridgeStatus === "pending" ? "Processing..." : "Confirm"}
+              {bridgeStatus === "awaiting_signature"
+                ? "Approve in Wallet..."
+                : bridgeStatus === "pending"
+                ? "Processing..."
+                : "Confirm"}
             </span>
           </button>
         </div>
