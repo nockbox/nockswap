@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ASSETS, PROTOCOL_FEE_DISPLAY } from "@/lib/constants";
+import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_BPS } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
+import { TransactionPreview, BridgeStatus } from "@/hooks/useBridge";
+import { NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { beltsToEvmAddress } from "@/lib/bridge";
+import { formatNOCK } from "@/lib/utils";
 
-type ResultStatus = "success" | "failed";
+type ResultStatus = "success" | "failed" | "confirming";
 
 interface ResultCardProps {
   isDarkMode?: boolean;
@@ -21,6 +25,9 @@ interface ResultCardProps {
   fullTransactionId?: string;
   onHomeClick?: () => void;
   onInspectMetadata?: () => Promise<void>;
+  onConfirm?: () => Promise<void>;
+  preview?: TransactionPreview;
+  bridgeStatus?: BridgeStatus;
 }
 
 export default function ResultCard({
@@ -37,13 +44,44 @@ export default function ResultCard({
   fullTransactionId,
   onHomeClick,
   onInspectMetadata,
+  onConfirm,
+  preview,
+  bridgeStatus,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const isMobile = useIsMobile();
 
   const isSuccess = status === "success";
+  const isConfirming = status === "confirming";
   const theme = getCardTheme(isDarkMode);
+
+  // Calculate bridge fee for confirming state
+  const calculateBridgeFee = (): string => {
+    if (!preview) return "0 NOCK";
+    const bridgeFeeNicks = (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+    const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
+    return `${formatNOCK(bridgeFeeNock)} NOCK`;
+  };
+
+  // Calculate amount after bridge fee deduction
+  const calculateAmountAfterBridgeFee = (): string => {
+    if (!preview) return totalNock;
+    const bridgeFeeNicks = (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+    const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
+    const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
+    return `${formatNOCK(amountNock)} NOCK`;
+  };
+
+  // Get reconstructed address from belts for verification
+  const getReconstructedAddress = (): string => {
+    if (!preview?.belts) return "";
+    try {
+      return beltsToEvmAddress(preview.belts[0], preview.belts[1], preview.belts[2]);
+    } catch {
+      return "Error reconstructing";
+    }
+  };
 
   const handleCopyAddress = async () => {
     try {
@@ -103,23 +141,26 @@ export default function ResultCard({
           paddingRight: isMobile ? 20 : 0,
         }}
       >
-        {/* Status icon */}
-        <img
-          src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
-          alt={isSuccess ? "Success" : "Failed"}
-          style={{
-            width: isMobile ? 52 : 64,
-            height: isMobile ? 52 : 64,
-          }}
-        />
+        {/* Status icon - only show for success/failed, not confirming */}
+        {!isConfirming && (
+          <img
+            src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
+            alt={isSuccess ? "Success" : "Failed"}
+            style={{
+              width: isMobile ? 52 : 64,
+              height: isMobile ? 52 : 64,
+            }}
+          />
+        )}
 
         {/* Title and subtitle */}
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: isMobile ? "flex-start" : "center",
+            alignItems: isMobile && !isConfirming ? "flex-start" : "center",
             gap: 4,
+            width: isConfirming ? "100%" : "auto",
           }}
         >
           <span
@@ -130,12 +171,12 @@ export default function ResultCard({
               lineHeight: isMobile ? "36px" : "40px",
               letterSpacing: isMobile ? -0.64 : -0.72,
               color: theme.textPrimary,
-              textAlign: isMobile ? "left" : "center",
+              textAlign: isConfirming ? "left" : (isMobile ? "left" : "center"),
             }}
           >
-            {isSuccess ? "Success" : "Failed"}
+            {isConfirming ? "Confirm Transaction" : (isSuccess ? "Success" : "Failed")}
           </span>
-          {!isSuccess && (
+          {!isSuccess && !isConfirming && errorMessage && (
             <span
               style={{
                 color: theme.textPrimary,
@@ -405,7 +446,45 @@ export default function ResultCard({
             boxSizing: "border-box",
           }}
         >
-          {/* Bridge fee row */}
+          {/* Network fee row (transaction fee) */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+            }}
+          >
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: isMobile ? 14 : 15,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: isMobile ? 0.14 : 0.15,
+              }}
+            >
+              Network fee
+            </span>
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: isMobile ? 14 : 15,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: isMobile ? 0.14 : 0.15,
+                opacity: 0.5,
+              }}
+            >
+              {networkFeeAmount}
+            </span>
+          </div>
+
+          {/* Bridge fee row (protocol fee) */}
           <div
             style={{
               display: "flex",
@@ -439,7 +518,7 @@ export default function ResultCard({
                 opacity: 0.5,
               }}
             >
-              {networkFeeAmount}
+              {isConfirming ? calculateBridgeFee() : calculateBridgeFee()}
             </span>
           </div>
 
@@ -483,22 +562,24 @@ export default function ResultCard({
                   letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
               >
-                {totalNock}
+                {isConfirming ? calculateAmountAfterBridgeFee() : totalNock}
               </span>
-              <span
-                style={{
-                  color: theme.textPrimary,
-                  fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 13,
-                  fontStyle: "normal",
-                  fontWeight: 500,
-                  lineHeight: "15px",
-                  letterSpacing: 0.13,
-                  opacity: 0.5,
-                }}
-              >
-                {totalUsd}
-              </span>
+              {totalUsd && (
+                <span
+                  style={{
+                    color: theme.textPrimary,
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 13,
+                    fontStyle: "normal",
+                    fontWeight: 500,
+                    lineHeight: "15px",
+                    letterSpacing: 0.13,
+                    opacity: 0.5,
+                  }}
+                >
+                  {totalUsd}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -592,33 +673,20 @@ export default function ResultCard({
           </div>
         </div>
 
-        {/* Transaction ID section */}
-        <div
-          style={{
-            display: "flex",
-            padding: isMobile ? 12 : 16,
-            justifyContent: "space-between",
-            alignItems: "center",
-            width: "100%",
-            borderRadius: 8,
-            background: theme.inputBg,
-            boxSizing: "border-box",
-          }}
-        >
-          <span
+        {/* Transaction ID section - only show for success/failed */}
+        {!isConfirming && transactionId && (
+          <div
             style={{
-              color: theme.textPrimary,
-              fontFamily: "var(--font-inter), sans-serif",
-              fontSize: isMobile ? 14 : 15,
-              fontStyle: "normal",
-              fontWeight: 500,
-              lineHeight: "22px",
-              letterSpacing: isMobile ? 0.14 : 0.15,
+              display: "flex",
+              padding: isMobile ? 12 : 16,
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              borderRadius: 8,
+              background: theme.inputBg,
+              boxSizing: "border-box",
             }}
           >
-            Transaction ID
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span
               style={{
                 color: theme.textPrimary,
@@ -630,37 +698,124 @@ export default function ResultCard({
                 letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
-              {transactionId}
+              Transaction ID
             </span>
-            <button
-              onClick={handleOpenTransaction}
-              style={{
-                display: "flex",
-                padding: 3,
-                alignItems: "center",
-                gap: 10,
-                borderRadius: 20,
-                background: theme.iconButtonBg,
-                border: "none",
-                cursor: "pointer",
-              }}
-              title="View on explorer"
-            >
-              <img
-                src="/assets/external-link-icon.svg"
-                alt="External link"
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
                 style={{
-                  width: 16,
-                  height: 16,
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
-              />
-            </button>
+              >
+                {transactionId}
+              </span>
+              <button
+                onClick={handleOpenTransaction}
+                style={{
+                  display: "flex",
+                  padding: 3,
+                  alignItems: "center",
+                  gap: 10,
+                  borderRadius: 20,
+                  background: theme.iconButtonBg,
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                title="View on explorer"
+              >
+                <img
+                  src="/assets/external-link-icon.svg"
+                  alt="External link"
+                  style={{
+                    width: 16,
+                    height: 16,
+                  }}
+                />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Note Data section - only show for confirming */}
+        {isConfirming && preview && (
+          <div
+            style={{
+              display: "flex",
+              padding: isMobile ? 12 : 16,
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 8,
+              width: "100%",
+              borderRadius: 8,
+              background: theme.inputBg,
+              boxSizing: "border-box",
+            }}
+          >
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: isMobile ? 14 : 15,
+                fontWeight: 600,
+                lineHeight: "22px",
+              }}
+            >
+              Note Data
+            </span>
+            {[
+              { label: "Key", value: "%bridge" },
+              { label: "Version", value: "0" },
+              { label: "Chain", value: "%base (0x65736162)" },
+              { label: "Belt 1", value: `0x${preview.belts[0].toString(16)}` },
+              { label: "Belt 2", value: `0x${preview.belts[1].toString(16)}` },
+              { label: "Belt 3", value: `0x${preview.belts[2].toString(16)}` },
+              { label: "Reconstructed", value: getReconstructedAddress() },
+              { label: "Notes used", value: preview.notesUsed.toString() },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  width: "100%",
+                }}
+              >
+                <span
+                  style={{
+                    color: theme.textPrimary,
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 13,
+                    opacity: 0.7,
+                  }}
+                >
+                  {label}
+                </span>
+                <span
+                  style={{
+                    color: theme.textPrimary,
+                    fontFamily: "monospace",
+                    fontSize: 12,
+                    opacity: 0.9,
+                    maxWidth: "60%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* TODO: Remove, only for testing  */}
-      {/* Debug: Inspect Metadata button */}
+      {/* Debug: Inspect Metadata button - commented out for production
       {isSuccess && onInspectMetadata && (
         <button
           onClick={handleInspectMetadata}
@@ -698,40 +853,116 @@ export default function ResultCard({
           </span>
         </button>
       )}
+      */}
 
-      {/* Back to home button */}
-      <button
-        onClick={onHomeClick}
-        style={{
-          display: "flex",
-          width: "100%",
-          height: 56,
-          padding: "17px 20px",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: 10,
-          borderRadius: 8,
-          background: "#ffc413",
-          border: "none",
-          cursor: "pointer",
-          boxSizing: "border-box",
-        }}
-      >
-        <span
+      {/* Buttons section */}
+      {isConfirming ? (
+        <div style={{ display: "flex", gap: 12, width: "100%" }}>
+          {/* Cancel button */}
+          <button
+            onClick={onHomeClick}
+            style={{
+              display: "flex",
+              flex: 1,
+              height: 56,
+              padding: "17px 20px",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 10,
+              borderRadius: 8,
+              background: "transparent",
+              border: `1px solid ${theme.cardBorder}`,
+              cursor: "pointer",
+              boxSizing: "border-box",
+            }}
+          >
+            <span
+              style={{
+                color: theme.textPrimary,
+                textAlign: "center",
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 16,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: 0.16,
+              }}
+            >
+              Cancel
+            </span>
+          </button>
+
+          {/* Confirm button */}
+          <button
+            onClick={onConfirm}
+            disabled={bridgeStatus === "awaiting_signature" || bridgeStatus === "pending"}
+            style={{
+              display: "flex",
+              flex: 1,
+              height: 56,
+              padding: "17px 20px",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 10,
+              borderRadius: 8,
+              background: bridgeStatus === "awaiting_signature" || bridgeStatus === "pending" ? "#f6f5f1" : "#ffc413",
+              border: "none",
+              cursor: bridgeStatus === "awaiting_signature" || bridgeStatus === "pending" ? "wait" : "pointer",
+              boxSizing: "border-box",
+            }}
+          >
+            <span
+              style={{
+                color: "#000",
+                textAlign: "center",
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 16,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: 0.16,
+                opacity: bridgeStatus === "awaiting_signature" || bridgeStatus === "pending" ? 0.4 : 1,
+              }}
+            >
+              {bridgeStatus === "awaiting_signature" ? "Approve in Wallet..." :
+               bridgeStatus === "pending" ? "Processing..." : "Confirm"}
+            </span>
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={onHomeClick}
           style={{
-            color: "#000",
-            textAlign: "center",
-            fontFamily: "var(--font-inter), sans-serif",
-            fontSize: 16,
-            fontStyle: "normal",
-            fontWeight: 500,
-            lineHeight: "22px",
-            letterSpacing: 0.16,
+            display: "flex",
+            width: "100%",
+            height: 56,
+            padding: "17px 20px",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 10,
+            borderRadius: 8,
+            background: "#ffc413",
+            border: "none",
+            cursor: "pointer",
+            boxSizing: "border-box",
           }}
         >
-          Back to home
-        </span>
-      </button>
+          <span
+            style={{
+              color: "#000",
+              textAlign: "center",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 16,
+              fontStyle: "normal",
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.16,
+            }}
+          >
+            Back to home
+          </span>
+        </button>
+      )}
     </div>
   );
 }

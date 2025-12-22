@@ -5,8 +5,15 @@
  * field representation (3 belts).
  */
 
+import type { Note, SpendCondition, NockchainTx } from "@nockbox/iris-wasm";
 import { isEvmAddress } from "./validators";
-import { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES } from "./constants";
+import {
+  ZORP_BRIDGE_THRESHOLD,
+  ZORP_BRIDGE_ADDRESSES,
+  ZORP_BRIDGE_LOCK_ROOT,
+  MIN_BRIDGE_AMOUNT_NOCK,
+} from "./constants";
+import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 
 // Re-export for convenience
 export { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES };
@@ -122,9 +129,9 @@ export function bigintToAtom(n: bigint): string {
 export function buildBridgeNoun(evmAddress: string): unknown {
   const [belt1, belt2, belt3] = evmAddressToBelts(evmAddress);
 
-  // Version 0
+  // Version 0 - hex string for Noun.fromJs()
   const VERSION_TAG = "0";
-  // %base = "base" in little-endian = 0x65736162
+  // %base = "base" in little-endian = 0x65736162 - hex string
   const BASE_CHAIN_TAG = "65736162";
 
   // Build noun structure: [0 [%base [belt1 [belt2 belt3]]]]
@@ -159,8 +166,6 @@ export function verifyBeltEncoding(address: string): boolean {
 // =============================================================================
 // Bridge Transaction Building
 // =============================================================================
-
-import type { Note, SpendCondition, NockchainTx } from "@nockbox/iris-wasm";
 
 /**
  * Create jammed bridge note data for an EVM address
@@ -294,4 +299,293 @@ export async function buildBridgeTransaction(
     txId: transaction.id.value,
     fee,
   };
+}
+
+// =============================================================================
+// Transaction Validation (Pre and Post Signing)
+// =============================================================================
+
+export interface TransactionValidationResult {
+  valid: boolean;
+  error?: string;
+  /** Amount being sent to bridge address in nicks */
+  bridgeAmountNicks?: bigint;
+  /** Destination EVM address extracted from note data */
+  destinationAddress?: string;
+  /** Belt encoding extracted from note data */
+  belts?: [bigint, bigint, bigint];
+}
+
+/**
+ * Validate a bridge transaction before or after signing
+ *
+ * This function validates the transaction object (protobuf format) to ensure:
+ * 1. There's an output to the bridge multisig address
+ * 2. The amount is >= MIN_BRIDGE_AMOUNT_NOCK
+ * 3. The note data contains valid bridge encoding with %bridge key
+ * 4. The destination address can be reconstructed from the belts
+ *
+ * MUST be called before signing (to prevent signing invalid tx)
+ * MUST be called after signing (to prevent submitting invalid tx)
+ *
+ * @param rawTxProto - The raw transaction protobuf object
+ * @returns Validation result with extracted data
+ */
+export async function validateBridgeTransaction(
+  rawTxProto: unknown
+): Promise<TransactionValidationResult> {
+  try {
+    // Dynamic import and initialize WASM
+    const wasm = await import("@nockbox/iris-wasm");
+    if (typeof wasm.default === "function") {
+      await wasm.default();
+    }
+
+    // Get seeds (outputs) from the raw transaction protobuf
+    // Structure: spends[].spend.spend_kind.Witness.seeds[]
+    // Each seed has: lock_root (string), note_data.entries[], gift.value (string)
+    const rawTxProtoTyped = rawTxProto as {
+      spends?: Array<{
+        spend?: {
+          spend_kind?: {
+            Witness?: {
+              seeds?: Array<{
+                lock_root?: string;
+                note_data?: {
+                  entries?: Array<{ key: string; blob: number[] }>;
+                };
+                gift?: { value?: string };
+              }>;
+            };
+          };
+        };
+      }>;
+    };
+
+    // Collect all seeds from all spends
+    const allSeeds: Array<{
+      assets: bigint;
+      lockRoot: string | undefined;
+      noteData:
+        | { entries?: Array<{ key: string; blob: number[] }> }
+        | undefined;
+    }> = [];
+
+    if (rawTxProtoTyped.spends) {
+      for (const spend of rawTxProtoTyped.spends) {
+        const seeds = spend.spend?.spend_kind?.Witness?.seeds;
+        if (seeds) {
+          for (const seed of seeds) {
+            allSeeds.push({
+              assets: BigInt(seed.gift?.value || 0),
+              lockRoot: seed.lock_root,
+              noteData: seed.note_data,
+            });
+          }
+        }
+      }
+    }
+
+    if (allSeeds.length === 0) {
+      return { valid: false, error: "Transaction has no outputs (seeds)" };
+    }
+
+    console.log("[validateBridgeTransaction] Found seeds:", allSeeds.length);
+
+    // Find the output to the bridge address by looking for %bridge note data entry
+    let bridgeOutput: (typeof allSeeds)[0] | null = null;
+
+    for (const seed of allSeeds) {
+      // Check if this seed has %bridge note data (this is our primary identifier)
+      if (seed.noteData?.entries?.some((e) => e.key === "%bridge")) {
+        bridgeOutput = seed;
+        break;
+      }
+    }
+
+    console.log(
+      "[validateBridgeTransaction] Bridge output found:",
+      !!bridgeOutput,
+      "assets:",
+      bridgeOutput?.assets?.toString()
+    );
+
+    if (!bridgeOutput) {
+      return {
+        valid: false,
+        error: "No output with %bridge note data found in transaction",
+      };
+    }
+
+    // Verify the lock root matches the expected bridge multisig address
+    if (bridgeOutput.lockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
+      console.error(
+        "[validateBridgeTransaction] Lock root mismatch:",
+        bridgeOutput.lockRoot,
+        "expected:",
+        ZORP_BRIDGE_LOCK_ROOT
+      );
+      return {
+        valid: false,
+        error: `Bridge output goes to wrong address. Expected bridge multisig, got: ${bridgeOutput.lockRoot}`,
+      };
+    }
+
+    // Validate amount
+    const minAmountNicks =
+      BigInt(MIN_BRIDGE_AMOUNT_NOCK) * BigInt(NOCK_TO_NICKS);
+    if (bridgeOutput.assets < minAmountNicks) {
+      const amountNock = Number(bridgeOutput.assets) / NOCK_TO_NICKS;
+      return {
+        valid: false,
+        error: `Bridge amount ${amountNock.toLocaleString()} NOCK is below minimum ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`,
+      };
+    }
+
+    // Validate note data format
+    if (
+      !bridgeOutput.noteData?.entries ||
+      bridgeOutput.noteData.entries.length === 0
+    ) {
+      return {
+        valid: false,
+        error: "Bridge output missing note data",
+      };
+    }
+
+    // Find %bridge entry
+    const bridgeEntry = bridgeOutput.noteData.entries.find(
+      (e) => e.key === "%bridge"
+    );
+    if (!bridgeEntry) {
+      return {
+        valid: false,
+        error: "Bridge output missing %bridge note data entry",
+      };
+    }
+
+    // Decode and validate bridge note data
+    let destinationAddress: string | undefined;
+    let belts: [bigint, bigint, bigint] | undefined;
+
+    try {
+      const noun = wasm.Noun.cue(new Uint8Array(bridgeEntry.blob));
+      const decoded = noun.toJs() as unknown;
+
+      // Expected structure: [version, [chain, [belt1, [belt2, belt3]]]]
+      if (!Array.isArray(decoded) || decoded.length !== 2) {
+        return {
+          valid: false,
+          error:
+            "Invalid bridge note data structure: expected [version, [chain, belts]]",
+        };
+      }
+
+      const version = decoded[0];
+      if (version !== "0" && version !== 0) {
+        return {
+          valid: false,
+          error: `Invalid bridge note data version: expected 0, got ${version}`,
+        };
+      }
+
+      const chainAndBelts = decoded[1];
+      if (!Array.isArray(chainAndBelts) || chainAndBelts.length !== 2) {
+        return {
+          valid: false,
+          error: "Invalid bridge note data: missing chain and belts",
+        };
+      }
+
+      const chain = chainAndBelts[0];
+      // %base = 0x65736162
+      if (chain !== "65736162") {
+        return {
+          valid: false,
+          error: `Invalid bridge chain: expected %base (65736162), got ${chain}`,
+        };
+      }
+
+      const beltData = chainAndBelts[1];
+      if (!Array.isArray(beltData) || beltData.length !== 2) {
+        return {
+          valid: false,
+          error: "Invalid bridge note data: invalid belt structure",
+        };
+      }
+
+      const belt1Hex = beltData[0];
+      const belt2And3 = beltData[1];
+
+      if (!Array.isArray(belt2And3) || belt2And3.length !== 2) {
+        return {
+          valid: false,
+          error: "Invalid bridge note data: invalid belt2/belt3 structure",
+        };
+      }
+
+      const belt2Hex = belt2And3[0];
+      const belt3Hex = belt2And3[1];
+
+      // Convert hex strings to bigints
+      const belt1 = BigInt("0x" + belt1Hex);
+      const belt2 = BigInt("0x" + belt2Hex);
+      const belt3 = BigInt("0x" + belt3Hex);
+
+      belts = [belt1, belt2, belt3];
+
+      // Reconstruct and validate EVM address
+      destinationAddress = beltsToEvmAddress(belt1, belt2, belt3);
+
+      // Verify address is valid
+      if (!isEvmAddress(destinationAddress)) {
+        return {
+          valid: false,
+          error: `Reconstructed address is invalid: ${destinationAddress}`,
+        };
+      }
+    } catch (err) {
+      return {
+        valid: false,
+        error: `Failed to decode bridge note data: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+    }
+
+    // All validations passed
+    return {
+      valid: true,
+      bridgeAmountNicks: bridgeOutput.assets,
+      destinationAddress,
+      belts,
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      error: `Transaction validation failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
+/**
+ * Validate a bridge transaction and throw if invalid
+ *
+ * Convenience wrapper that throws on validation failure.
+ *
+ * @param rawTxProto - The raw transaction protobuf object
+ * @param context - Context for error message ("pre-signing" or "post-signing")
+ * @throws Error if validation fails
+ */
+export async function assertValidBridgeTransaction(
+  rawTxProto: unknown,
+  context: "pre-signing" | "post-signing"
+): Promise<TransactionValidationResult> {
+  const result = await validateBridgeTransaction(rawTxProto);
+  if (!result.valid) {
+    throw new Error(`${context} validation failed: ${result.error}`);
+  }
+  return result;
 }

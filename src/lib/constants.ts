@@ -1,7 +1,7 @@
 export const PROTOCOL_FEE_BPS = 30; // 0.3% fee
 export const PROTOCOL_FEE_DISPLAY = `${PROTOCOL_FEE_BPS / 100}%`; // "0.3%"
 
-export const MIN_BRIDGE_AMOUNT_NOCK = 1000; // TODO: Use 100_000 for prod;
+export const MIN_BRIDGE_AMOUNT_NOCK = 1;
 
 // Zorp Bridge 3-of-5 Multisig Configuration
 export const ZORP_BRIDGE_THRESHOLD = 3;
@@ -12,6 +12,9 @@ export const ZORP_BRIDGE_ADDRESSES: string[] = [
   "7E47xYNVEyt7jGmLsiChUHnyw88AfBvzJfXfEQkPmMo2ZWsdcPudwmV", // Nockbox
   "3xSyK6RQUaYzE8YDUamkpKRHALxaYo8E7eppawwE4sP35c3PASc6koq", // SWPS
 ];
+// Expected lock root for bridge outputs (derived from 3-of-5 multisig above)
+export const ZORP_BRIDGE_LOCK_ROOT =
+  "AcsPkuhXQoGeEsF91yynpm1kcW17PQ2Z1MEozgx7YnDPkZwrtzLuuqd";
 
 export const NOCK_COINGECKO_ID = "nockchain";
 

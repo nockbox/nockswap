@@ -4,22 +4,23 @@ import { useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
-import { ASSETS, PROTOCOL_FEE_DISPLAY } from "@/lib/constants";
-import { BridgeResult, useBridge } from "@/hooks/useBridge";
+import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_BPS } from "@/lib/constants";
+import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
 
 type ResultState =
   | { type: "idle" }
+  | { type: "confirming"; preview: TransactionPreview }
   | { type: "success"; result: BridgeResult }
   | { type: "error"; message: string };
 
 export default function Home() {
   const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
-  const { inspectBridgeNotes } = useBridge();
+  const { inspectBridgeNotes, confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
 
-  const handleSwapSuccess = (result: BridgeResult) => {
-    setResultState({ type: "success", result });
+  const handlePrepareSuccess = (preview: TransactionPreview) => {
+    setResultState({ type: "confirming", preview });
   };
 
   const handleSwapError = (message: string) => {
@@ -27,6 +28,25 @@ export default function Home() {
   };
 
   const handleHomeClick = () => {
+    setResultState({ type: "idle" });
+  };
+
+  const handleConfirm = async () => {
+    try {
+      const result = await confirmTransaction();
+      // confirmTransaction returns undefined (without throwing) if user cancels wallet signature
+      if (result) {
+        setResultState({ type: "success", result });
+      }
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Bridge transaction failed";
+      setResultState({ type: "error", message: errorMessage });
+    }
+  };
+
+  const handleCancel = () => {
+    cancelTransaction();
     setResultState({ type: "idle" });
   };
 
@@ -40,6 +60,13 @@ export default function Home() {
 
   // Convert nicks to NOCK
   const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
+
+  // Calculate amount after bridge fee deduction (0.3%)
+  const calculateAmountAfterBridgeFee = (amountInNicks: bigint): number => {
+    const bridgeFeeNicks = (amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+    const amountAfterFee = amountInNicks - bridgeFeeNicks;
+    return Number(amountAfterFee) / NOCK_TO_NICKS;
+  };
 
   return (
     <PageLayout>
@@ -93,7 +120,32 @@ export default function Home() {
               boxSizing: "border-box",
             }}
           >
-            {resultState.type !== "idle" ? (
+            {resultState.type === "idle" ? (
+              <SwapCard
+                isDarkMode={isDarkMode}
+                onSwapError={handleSwapError}
+                onPrepareSuccess={handlePrepareSuccess}
+                prepareTransaction={prepareTransaction}
+                bridgeStatus={bridgeStatus}
+              />
+            ) : resultState.type === "confirming" ? (
+              <ResultCard
+                isDarkMode={isDarkMode}
+                status="confirming"
+                networkFeePercent={PROTOCOL_FEE_DISPLAY}
+                networkFeeAmount={`${formatNOCK(nicksToNock(resultState.preview.fee))} NOCK`}
+                totalNock={`${formatNOCK(nicksToNock(resultState.preview.amountInNicks))} NOCK`}
+                totalUsd=""
+                receivingAddress={truncateAddress(resultState.preview.destinationAddress)}
+                fullReceivingAddress={resultState.preview.destinationAddress}
+                transactionId=""
+                fullTransactionId=""
+                onHomeClick={handleCancel}
+                onConfirm={handleConfirm}
+                preview={resultState.preview}
+                bridgeStatus={bridgeStatus}
+              />
+            ) : (
               <ResultCard
                 isDarkMode={isDarkMode}
                 status={resultState.type === "success" ? "success" : "failed"}
@@ -108,7 +160,7 @@ export default function Home() {
                 }
                 totalNock={
                   resultState.type === "success"
-                    ? `${formatNOCK(nicksToNock(resultState.result.amountInNicks))} NOCK`
+                    ? `${formatNOCK(calculateAmountAfterBridgeFee(resultState.result.amountInNicks))} NOCK`
                     : "0 NOCK"
                 }
                 totalUsd=""
@@ -134,12 +186,6 @@ export default function Home() {
                 }
                 onHomeClick={handleHomeClick}
                 onInspectMetadata={handleInspectMetadata}
-              />
-            ) : (
-              <SwapCard
-                isDarkMode={isDarkMode}
-                onSwapSuccess={handleSwapSuccess}
-                onSwapError={handleSwapError}
               />
             )}
           </div>

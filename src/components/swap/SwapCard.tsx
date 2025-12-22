@@ -5,7 +5,11 @@ import Image from "next/image";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
-import { useBridge, BridgeResult } from "@/hooks/useBridge";
+import {
+  useBridge,
+  TransactionPreview,
+  BridgeStatus,
+} from "@/hooks/useBridge";
 import {
   NOCK_COINGECKO_ID,
   ASSETS,
@@ -20,14 +24,21 @@ import { parseAmount } from "@/lib/utils";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
-  onSwapSuccess?: (result: BridgeResult) => void;
   onSwapError?: (error: string) => void;
+  onPrepareSuccess?: (preview: TransactionPreview) => void;
+  prepareTransaction: (
+    destinationAddress: string,
+    amountInNocks: number
+  ) => Promise<TransactionPreview>;
+  bridgeStatus: BridgeStatus;
 }
 
 export default function SwapCard({
   isDarkMode = false,
-  onSwapSuccess,
   onSwapError,
+  onPrepareSuccess,
+  prepareTransaction,
+  bridgeStatus,
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
   // Currently only supports Nockchain -> Base direction
@@ -60,12 +71,8 @@ export default function SwapCard({
   // Wallet connection
   const { isInstalled, isConnected, isConnecting, connect } = useWallet();
 
-  // Bridge hook
-  const {
-    status: bridgeStatus,
-    bridgeToBase,
-    isBridgeConfigured,
-  } = useBridge();
+  // Bridge configuration check
+  const { isBridgeConfigured } = useBridge();
 
   // Balance check not currently doable
   // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
@@ -73,10 +80,15 @@ export default function SwapCard({
 
   // Check if amount is below minimum bridge amount
   const parsedFromAmount = parseAmount(fromAmount);
+  // Convert to NOCK if in USD mode
+  const amountInNock =
+    isFromUsdMode && nockPrice > 0
+      ? parsedFromAmount / nockPrice
+      : parsedFromAmount;
   const isBelowMinimum =
     fromAmount.trim().length > 0 &&
-    parsedFromAmount > 0 &&
-    parsedFromAmount < MIN_BRIDGE_AMOUNT_NOCK;
+    amountInNock > 0 &&
+    amountInNock < MIN_BRIDGE_AMOUNT_NOCK;
 
   // Address validation
   const isAddressValid =
@@ -105,14 +117,14 @@ export default function SwapCard({
     }
 
     try {
-      const result = await bridgeToBase(receivingAddress, nockAmount);
-      // bridgeToBase returns undefined (without throwing) if user cancels
-      if (result && onSwapSuccess) {
-        onSwapSuccess(result);
+      // Prepare transaction and show confirmation screen
+      const preview = await prepareTransaction(receivingAddress, nockAmount);
+      if (preview && onPrepareSuccess) {
+        onPrepareSuccess(preview);
       }
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : "Bridge transaction failed";
+        err instanceof Error ? err.message : "Failed to prepare transaction";
       if (onSwapError) {
         onSwapError(errorMessage);
       }
@@ -825,7 +837,11 @@ export default function SwapCard({
         let isLoading = false;
 
         // Bridge status takes priority when active
-        if (bridgeStatus === "pending") {
+        if (bridgeStatus === "preparing") {
+          buttonText = "Preparing...";
+          isDisabled = true;
+          isLoading = true;
+        } else if (bridgeStatus === "pending") {
           buttonText = "Processing...";
           isDisabled = true;
           isLoading = true;

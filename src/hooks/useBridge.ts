@@ -11,12 +11,15 @@ import {
   evmAddressToBelts,
   verifyBeltEncoding,
   buildBridgeNoun,
+  assertValidBridgeTransaction,
 } from "@/lib/bridge";
 import { isEvmAddress } from "@/lib/validators";
 import { MIN_BRIDGE_AMOUNT_NOCK } from "@/lib/constants";
 
 export type BridgeStatus =
   | "idle"
+  | "preparing"
+  | "confirming"
   | "pending"
   | "awaiting_signature"
   | "success"
@@ -27,6 +30,21 @@ export interface BridgeResult {
   fee: bigint;
   destinationAddress: string;
   amountInNicks: bigint;
+}
+
+export interface TransactionPreview {
+  /** Amount being bridged in nicks */
+  amountInNicks: bigint;
+  /** Exact fee calculated from built transaction */
+  fee: bigint;
+  /** Total cost (amount + fee) */
+  totalCost: bigint;
+  /** Number of input notes being used */
+  notesUsed: number;
+  /** Destination EVM address */
+  destinationAddress: string;
+  /** Belt encoding of destination address */
+  belts: [bigint, bigint, bigint];
 }
 
 export interface BridgeNoteData {
@@ -46,12 +64,15 @@ export interface UseBridgeReturn {
   status: BridgeStatus;
   error: string | null;
   result: BridgeResult | null;
+  preview: TransactionPreview | null;
 
   // Actions
-  bridgeToBase: (
+  prepareTransaction: (
     destinationAddress: string,
     amountInNocks: number
-  ) => Promise<BridgeResult>;
+  ) => Promise<TransactionPreview>;
+  confirmTransaction: () => Promise<BridgeResult>;
+  cancelTransaction: () => void;
   reset: () => void;
 
   // Helpers
@@ -69,14 +90,30 @@ export interface UseBridgeReturn {
   inspectBridgeNotes: () => Promise<{ notes: BridgeNoteInfo[] } | null>;
 }
 
+// Internal type for prepared transaction data (not exported)
+interface PreparedTransaction {
+  rawTx: unknown;
+  txNotes: unknown;
+  nockchainTx: unknown;
+  fee: bigint;
+  destinationAddress: string;
+  amountInNicks: bigint;
+  belts: [bigint, bigint, bigint];
+  notesUsed: number;
+}
+
 export function useBridge(): UseBridgeReturn {
   const { isConnected, address, grpcEndpoint, signRawTx } = useWallet();
   const [status, setStatus] = useState<BridgeStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BridgeResult | null>(null);
+  const [preview, setPreview] = useState<TransactionPreview | null>(null);
 
   // Keep a ref to the grpc client to avoid recreating
   const grpcClientRef = useRef<unknown>(null);
+
+  // Store prepared transaction for confirmation step
+  const preparedTxRef = useRef<PreparedTransaction | null>(null);
 
   const isBridgeConfigured = checkBridgeConfigured();
 
@@ -123,13 +160,22 @@ export function useBridge(): UseBridgeReturn {
     setStatus("idle");
     setError(null);
     setResult(null);
+    setPreview(null);
+    preparedTxRef.current = null;
   }, []);
 
-  const bridgeToBase = useCallback(
+  const cancelTransaction = useCallback(() => {
+    setStatus("idle");
+    setPreview(null);
+    preparedTxRef.current = null;
+  }, []);
+
+  // Prepare transaction: build tx and return preview for confirmation
+  const prepareTransaction = useCallback(
     async (
       destinationAddress: string,
       amountInNocks: number
-    ): Promise<BridgeResult> => {
+    ): Promise<TransactionPreview> => {
       // Pre-flight checks
       if (!isConnected || !address) {
         throw new Error("Wallet not connected");
@@ -143,9 +189,11 @@ export function useBridge(): UseBridgeReturn {
         throw new Error("Bridge not configured");
       }
 
-      setStatus("pending");
+      setStatus("preparing");
       setError(null);
       setResult(null);
+      setPreview(null);
+      preparedTxRef.current = null;
 
       try {
         // Validate destination
@@ -163,6 +211,7 @@ export function useBridge(): UseBridgeReturn {
         }
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
+        const belts = evmAddressToBelts(destinationAddress);
 
         // Load and initialize WASM module
         const wasm = await import("@nockbox/iris-wasm");
@@ -179,7 +228,6 @@ export function useBridge(): UseBridgeReturn {
         >;
 
         // Derive first-names from PKH (notes are indexed by first-name, not address)
-        // Simple notes use PKH-only spend condition
         const simplePkh = wasm.Pkh.single(address);
         const simpleSpendCondition = wasm.SpendCondition.newPkh(simplePkh);
         const simpleFirstName = simpleSpendCondition.firstName();
@@ -201,8 +249,7 @@ export function useBridge(): UseBridgeReturn {
 
         // Parse notes from responses
         const userNotes: InstanceType<typeof wasm.Note>[] = [];
-        const userSpendConditions: InstanceType<typeof wasm.SpendCondition>[] =
-          [];
+        const userSpendConditions: InstanceType<typeof wasm.SpendCondition>[] = [];
 
         // Process simple notes
         if (simpleBalance?.notes) {
@@ -247,21 +294,18 @@ export function useBridge(): UseBridgeReturn {
           Number(BigInt(userNotes[b].assets) - BigInt(userNotes[a].assets))
         );
 
-        // Estimate fee based on number of inputs (more inputs = higher fee)
-        // Actual observed: 2 notes = ~119 words, so base ~20, input ~30, output ~13
+        // Estimate fee based on number of inputs
         const estimateFeeForNotes = (numNotes: number): bigint => {
           const baseWords = 20n;
           const wordsPerInput = 30n;
           const wordsPerOutput = 13n;
-          // Outputs: 1 bridge seed + numNotes refunds
           const numOutputs = BigInt(1 + numNotes);
           const totalWords = baseWords + (BigInt(numNotes) * wordsPerInput) + (numOutputs * wordsPerOutput);
-          // Add 10% safety margin
           const safeWords = (totalWords * 110n) / 100n;
           return safeWords * DEFAULT_FEE_PER_WORD;
         };
 
-        // Select notes iteratively, accounting for fee increase with more notes
+        // Select notes iteratively
         const selectedNotes: typeof userNotes = [];
         const selectedConditions: typeof userSpendConditions = [];
         let selectedTotal = 0n;
@@ -271,7 +315,6 @@ export function useBridge(): UseBridgeReturn {
           selectedConditions.push(userSpendConditions[i]);
           selectedTotal += BigInt(userNotes[i].assets);
 
-          // Check if we have enough for amount + estimated fee for this many notes
           const estimatedFee = estimateFeeForNotes(selectedNotes.length);
           const targetAmount = amountInNicks + estimatedFee;
 
@@ -280,7 +323,7 @@ export function useBridge(): UseBridgeReturn {
           }
         }
 
-        // Final check
+        // Final checks
         const finalEstimatedFee = estimateFeeForNotes(selectedNotes.length);
         const finalTarget = amountInNicks + finalEstimatedFee;
 
@@ -291,43 +334,32 @@ export function useBridge(): UseBridgeReturn {
           );
         }
 
-        // Check total available
         if (totalAvailable < finalTarget) {
           throw new Error(
             `Insufficient total balance. Available: ${totalAvailable} nicks, ` +
-              `Required: ${amountInNicks} + ~${finalEstimatedFee} fee`
+            `Required: ${amountInNicks} + ~${finalEstimatedFee} fee`
           );
         }
 
-        // Build transaction using TxBuilder
+        // Build transaction
         const builder = new wasm.TxBuilder(DEFAULT_FEE_PER_WORD);
 
-        // Note: simpleSpend is for PKH-to-PKH transfers and doesn't support:
-        // 1. Multisig recipients (we need bridge multisig lock root)
-        // 2. Custom note data (we need bridge metadata)
-        // So we must use manual SpendBuilder approach
-
-        // Distribute bridge amount across notes (like Rust simple_spend_base)
-        // Each note contributes what it can to the bridge
         let remainingGift = amountInNicks;
-        let isFirstBridgeSeed = true; // Track if this is the first bridge seed
+        let isFirstBridgeSeed = true;
 
         for (let i = 0; i < selectedNotes.length; i++) {
           const note = selectedNotes[i];
           const spendCondition = selectedConditions[i];
           const noteAssets = BigInt(note.assets);
 
-          // Calculate this note's contribution (can't give more than it has)
           const giftPortion = remainingGift < noteAssets ? remainingGift : noteAssets;
           remainingGift -= giftPortion;
 
-          // Clone note and spend condition (WASM objects are consumed on use)
           const noteClone = wasm.Note.fromProtobuf(note.toProtobuf());
           const spendConditionClone = wasm.SpendCondition.fromProtobuf(
             spendCondition.toProtobuf()
           );
 
-          // Create refund spend condition (back to user)
           const refundSpendCondition = wasm.SpendCondition.newPkh(
             wasm.Pkh.single(address)
           );
@@ -339,11 +371,8 @@ export function useBridge(): UseBridgeReturn {
           );
 
           if (giftPortion > 0n) {
-            // This note contributes to bridge - create seed with its portion
             const parentHash = note.hash();
 
-            // Only attach bridge NoteData to the FIRST seed. Seeds with the same lock
-            // get merged into one output - the metadata from the first seed carries through.
             let noteData: InstanceType<typeof wasm.NoteData>;
             if (isFirstBridgeSeed) {
               const freshBridgeNounJs = buildBridgeNoun(destinationAddress);
@@ -356,7 +385,6 @@ export function useBridge(): UseBridgeReturn {
               noteData = wasm.NoteData.empty();
             }
 
-            // Create fresh lock root for each seed (WASM objects are consumed on use)
             const freshBridgePkh = new wasm.Pkh(
               BigInt(ZORP_BRIDGE_THRESHOLD),
               ZORP_BRIDGE_ADDRESSES
@@ -367,7 +395,7 @@ export function useBridge(): UseBridgeReturn {
             const seed = new wasm.Seed(
               null,
               freshZorpLockRoot,
-              giftPortion, // This note's contribution, not full amount
+              giftPortion,
               noteData,
               parentHash
             );
@@ -379,70 +407,58 @@ export function useBridge(): UseBridgeReturn {
           builder.spend(spendBuilder);
         }
 
-        // Calculate and set fee
+        // Calculate exact fee
         builder.recalcAndSetFee(false);
         const fee = builder.calcFee();
 
-        // Build the transaction and convert to RawTx for signing
+        // Build transaction
         const nockchainTx = builder.build();
         const rawTx = nockchainTx.toRawTx();
-
-        // Get notes and spend conditions for signing
         const txNotes = builder.allNotes();
 
-        setStatus("awaiting_signature");
+        // Store prepared transaction data
+        const rawTxProto = rawTx.toProtobuf();
 
-        // Sign via wallet
-        const signedTxBytes = await signRawTx({
-          rawTx: rawTx.toProtobuf(),
-          notes: txNotes.notes.map((n: { toProtobuf: () => unknown }) =>
-            n.toProtobuf()
-          ),
-          spendConditions: txNotes.spendConditions.map(
-            (sc: { toProtobuf: () => unknown }) => sc.toProtobuf()
-          ),
-        });
+        // PRE-SIGNING VALIDATION: Validate the transaction before allowing signature
+        // This ensures the transaction has correct bridge output, amount, and note data
+        const preValidation = await assertValidBridgeTransaction(rawTxProto, "pre-signing");
 
-        setStatus("pending");
-
-        // Submit to network
-        await grpcClient.sendTransaction(signedTxBytes);
-
-        // Get transaction ID from built transaction
-        const txId = nockchainTx.id?.value || "unknown";
-
-        const bridgeResult: BridgeResult = {
-          txId,
+        // Store prepared transaction data for confirmation
+        preparedTxRef.current = {
+          rawTx: rawTxProto,
+          txNotes: {
+            notes: txNotes.notes.map((n: { toProtobuf: () => unknown }) => n.toProtobuf()),
+            spendConditions: txNotes.spendConditions.map((sc: { toProtobuf: () => unknown }) => sc.toProtobuf()),
+          },
+          nockchainTx: nockchainTx.id?.value || "unknown",
           fee,
           destinationAddress,
           amountInNicks,
+          belts,
+          notesUsed: selectedNotes.length,
         };
 
-        setResult(bridgeResult);
-        setStatus("success");
-        return bridgeResult;
+        // Create preview using VALIDATED data from transaction (not UI values)
+        // This ensures the confirmation screen shows what's actually in the transaction
+        const transactionPreview: TransactionPreview = {
+          amountInNicks: preValidation.bridgeAmountNicks!,
+          fee,
+          totalCost: preValidation.bridgeAmountNicks! + fee,
+          notesUsed: selectedNotes.length,
+          destinationAddress: preValidation.destinationAddress!,
+          belts: preValidation.belts!,
+        };
+
+        setPreview(transactionPreview);
+        setStatus("confirming");
+        return transactionPreview;
       } catch (err) {
-        // Extract error message
         const message =
           err instanceof Error
             ? err.message
-            : String(err) || "Bridge transaction failed";
+            : String(err) || "Failed to prepare transaction";
 
-        // Check if user cancelled/rejected the transaction
-        const isCancellation =
-          message.toLowerCase().includes("reject") ||
-          message.toLowerCase().includes("cancel") ||
-          message.toLowerCase().includes("denied");
-
-        if (isCancellation) {
-          // Reset to idle state for user-initiated cancellations (don't throw)
-          setStatus("idle");
-          setError(null);
-          return undefined as unknown as BridgeResult;
-        }
-
-        // Actual error - set error state and throw
-        console.error("Bridge error:", message);
+        console.error("Prepare error:", message);
         setError(message);
         setStatus("error");
         throw err;
@@ -454,9 +470,89 @@ export function useBridge(): UseBridgeReturn {
       grpcEndpoint,
       isBridgeConfigured,
       validateDestination,
-      signRawTx,
     ]
   );
+
+  // Confirm and submit prepared transaction
+  const confirmTransaction = useCallback(async (): Promise<BridgeResult> => {
+    const prepared = preparedTxRef.current;
+
+    if (!prepared) {
+      throw new Error("No transaction prepared. Call prepareTransaction first.");
+    }
+
+    if (status !== "confirming") {
+      throw new Error("Transaction not in confirming state");
+    }
+
+    setStatus("awaiting_signature");
+
+    try {
+      // Sign via wallet
+      const signedTxBytes = await signRawTx({
+        rawTx: prepared.rawTx,
+        notes: (prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }).notes,
+        spendConditions: (prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }).spendConditions,
+      });
+
+      setStatus("pending");
+
+      // POST-SIGNING VALIDATION: Re-validate the transaction before submitting
+      // This ensures the transaction we're about to submit is still valid
+      // (signing doesn't modify outputs, but this is a safety check)
+      await assertValidBridgeTransaction(prepared.rawTx, "post-signing");
+
+      // Load WASM for gRPC client
+      const wasm = await import("@nockbox/iris-wasm");
+      if (typeof wasm.default === "function") {
+        await wasm.default();
+      }
+
+      // Get or create gRPC client
+      if (!grpcClientRef.current) {
+        grpcClientRef.current = new wasm.GrpcClient(grpcEndpoint!);
+      }
+      const grpcClient = grpcClientRef.current as InstanceType<typeof wasm.GrpcClient>;
+
+      // Submit to network
+      await grpcClient.sendTransaction(signedTxBytes);
+
+      const bridgeResult: BridgeResult = {
+        txId: prepared.nockchainTx as string,
+        fee: prepared.fee,
+        destinationAddress: prepared.destinationAddress,
+        amountInNicks: prepared.amountInNicks,
+      };
+
+      setResult(bridgeResult);
+      setStatus("success");
+      setPreview(null);
+      preparedTxRef.current = null;
+
+      return bridgeResult;
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : String(err) || "Bridge transaction failed";
+
+      // Check if user cancelled
+      const isCancellation =
+        message.toLowerCase().includes("reject") ||
+        message.toLowerCase().includes("cancel") ||
+        message.toLowerCase().includes("denied");
+
+      if (isCancellation) {
+        setStatus("confirming"); // Go back to confirming state
+        return undefined as unknown as BridgeResult;
+      }
+
+      console.error("Bridge error:", message);
+      setError(message);
+      setStatus("error");
+      throw err;
+    }
+  }, [status, signRawTx, grpcEndpoint]);
 
   // Debug function to fetch and inspect bridge note metadata
   const inspectBridgeNotes = useCallback(async (): Promise<{
@@ -589,14 +685,24 @@ export function useBridge(): UseBridgeReturn {
   }, [grpcEndpoint, isBridgeConfigured]);
 
   return {
+    // State
     status,
     error,
     result,
-    bridgeToBase,
+    preview,
+
+    // Actions
+    prepareTransaction,
+    confirmTransaction,
+    cancelTransaction,
     reset,
+
+    // Helpers
     isBridgeConfigured,
     validateDestination,
     previewBridge,
+
+    // Debug
     inspectBridgeNotes,
   };
 }
