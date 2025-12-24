@@ -45,8 +45,10 @@ export interface TransactionPreview {
   destinationAddress: string;
   /** Belt encoding of destination address */
   belts: [bigint, bigint, bigint];
-  /** Jammed bridge note data (for download/debugging) */
-  jammedNoteData: Uint8Array;
+  /** Transaction ID */
+  txId: string;
+  /** Jammed transaction bytes (for download) */
+  jammedTransaction: Uint8Array;
 }
 
 export interface BridgeNoteData {
@@ -348,7 +350,6 @@ export function useBridge(): UseBridgeReturn {
 
         let remainingGift = amountInNicks;
         let isFirstBridgeSeed = true;
-        let capturedJammedData: Uint8Array | null = null;
 
         for (let i = 0; i < selectedNotes.length; i++) {
           const note = selectedNotes[i];
@@ -381,7 +382,6 @@ export function useBridge(): UseBridgeReturn {
               const freshBridgeNounJs = buildBridgeNoun(destinationAddress);
               const bridgeNoun = wasm.Noun.fromJs(freshBridgeNounJs);
               const jammedBridgeData = bridgeNoun.jam();
-              capturedJammedData = jammedBridgeData; // Capture for download
               const bridgeEntry = new wasm.NoteDataEntry(BRIDGE_NOTE_KEY, jammedBridgeData);
               noteData = new wasm.NoteData([bridgeEntry]);
               isFirstBridgeSeed = false;
@@ -444,6 +444,7 @@ export function useBridge(): UseBridgeReturn {
 
         // Create preview using VALIDATED data from transaction (not UI values)
         // This ensures the confirmation screen shows what's actually in the transaction
+        const txId = nockchainTx.id?.value || "unknown";
         const transactionPreview: TransactionPreview = {
           amountInNicks: preValidation.bridgeAmountNicks!,
           fee,
@@ -451,7 +452,8 @@ export function useBridge(): UseBridgeReturn {
           notesUsed: selectedNotes.length,
           destinationAddress: preValidation.destinationAddress!,
           belts: preValidation.belts!,
-          jammedNoteData: capturedJammedData || new Uint8Array(),
+          txId,
+          jammedTransaction: nockchainTx.toJam(),
         };
 
         setPreview(transactionPreview);

@@ -4,7 +4,7 @@ import { useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
-import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_BPS } from "@/lib/constants";
+import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_NICKS_PER_NOCK } from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
@@ -17,7 +17,7 @@ type ResultState =
 
 export default function Home() {
   const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
-  const { inspectBridgeNotes, confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
+  const { confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
 
   const handlePrepareSuccess = (preview: TransactionPreview) => {
     setResultState({ type: "confirming", preview });
@@ -50,20 +50,13 @@ export default function Home() {
     setResultState({ type: "idle" });
   };
 
-  const handleInspectMetadata = async () => {
-    console.log("[Debug] Inspecting bridge metadata...");
-    const result = await inspectBridgeNotes();
-    if (result) {
-      console.log("[Debug] Bridge notes inspection complete:", result);
-    }
-  };
-
   // Convert nicks to NOCK
   const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
 
-  // Calculate amount after bridge fee deduction (0.3%)
+  // Calculate amount after bridge fee deduction (~0.3%)
+  // Formula: roundDown(amountInNicks / 65536) * PROTOCOL_FEE_NICKS_PER_NOCK
   const calculateAmountAfterBridgeFee = (amountInNicks: bigint): number => {
-    const bridgeFeeNicks = (amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+    const bridgeFeeNicks = (amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const amountAfterFee = amountInNicks - bridgeFeeNicks;
     return Number(amountAfterFee) / NOCK_TO_NICKS;
   };
@@ -185,7 +178,6 @@ export default function Home() {
                     : ""
                 }
                 onHomeClick={handleHomeClick}
-                onInspectMetadata={handleInspectMetadata}
               />
             )}
           </div>

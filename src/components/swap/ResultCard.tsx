@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   ASSETS,
   PROTOCOL_FEE_DISPLAY,
-  PROTOCOL_FEE_BPS,
+  PROTOCOL_FEE_NICKS_PER_NOCK,
 } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -28,7 +28,6 @@ interface ResultCardProps {
   transactionId?: string;
   fullTransactionId?: string;
   onHomeClick?: () => void;
-  onInspectMetadata?: () => Promise<void>;
   onConfirm?: () => Promise<void>;
   preview?: TransactionPreview;
   bridgeStatus?: BridgeStatus;
@@ -47,13 +46,11 @@ export default function ResultCard({
   transactionId = "",
   fullTransactionId,
   onHomeClick,
-  onInspectMetadata,
   onConfirm,
   preview,
   bridgeStatus,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
-  const [inspecting, setInspecting] = useState(false);
   const isMobile = useIsMobile();
 
   const isSuccess = status === "success";
@@ -61,10 +58,12 @@ export default function ResultCard({
   const theme = getCardTheme(isDarkMode);
 
   // Calculate bridge fee for confirming state
+  // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
+  // Note: BigInt division automatically truncates (rounds down)
   const calculateBridgeFee = (): string => {
     if (!preview) return "0 NOCK";
     const bridgeFeeNicks =
-      (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+      (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
@@ -73,7 +72,7 @@ export default function ResultCard({
   const calculateAmountAfterBridgeFee = (): string => {
     if (!preview) return totalNock;
     const bridgeFeeNicks =
-      (preview.amountInNicks * BigInt(PROTOCOL_FEE_BPS)) / 10000n;
+      (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
     const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
     return `${formatNOCK(amountNock)} NOCK`;
@@ -111,27 +110,17 @@ export default function ResultCard({
     }
   };
 
-  const handleInspectMetadata = async () => {
-    if (!onInspectMetadata) return;
-    setInspecting(true);
-    try {
-      await onInspectMetadata();
-    } finally {
-      setInspecting(false);
-    }
-  };
-
   const handleDownloadTransaction = () => {
-    if (!preview?.jammedNoteData) return;
+    if (!preview?.jammedTransaction) return;
 
-    // Download raw jammed bytes (copy to new ArrayBuffer for Blob compatibility)
-    const buffer = new ArrayBuffer(preview.jammedNoteData.length);
-    new Uint8Array(buffer).set(preview.jammedNoteData);
-    const blob = new Blob([buffer], { type: "application/octet-stream" });
+    // Download raw jammed transaction bytes
+    const buffer = new ArrayBuffer(preview.jammedTransaction.length);
+    new Uint8Array(buffer).set(preview.jammedTransaction);
+    const blob = new Blob([buffer], { type: "application/jam" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `bridge-note-${Date.now()}.jam`;
+    a.download = `bridge-${preview.txId}.tx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -877,45 +866,6 @@ export default function ResultCard({
         )}
       </div>
 
-      {/* Debug: Inspect Metadata button - commented out for production
-      {isSuccess && onInspectMetadata && (
-        <button
-          onClick={handleInspectMetadata}
-          disabled={inspecting}
-          style={{
-            display: "flex",
-            width: "100%",
-            height: 44,
-            padding: "12px 20px",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 10,
-            borderRadius: 8,
-            background: "transparent",
-            border: `1px solid ${theme.cardBorder}`,
-            cursor: inspecting ? "wait" : "pointer",
-            boxSizing: "border-box",
-            opacity: inspecting ? 0.6 : 1,
-          }}
-        >
-          <span
-            style={{
-              color: theme.textPrimary,
-              textAlign: "center",
-              fontFamily: "var(--font-inter), sans-serif",
-              fontSize: 14,
-              fontStyle: "normal",
-              fontWeight: 500,
-              lineHeight: "20px",
-              letterSpacing: 0.14,
-              opacity: 0.7,
-            }}
-          >
-            {inspecting ? "Inspecting..." : "Inspect Bridge Metadata (Debug)"}
-          </span>
-        </button>
-      )}
-      */}
 
       {/* Buttons section */}
       {isConfirming ? (

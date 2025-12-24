@@ -1,5 +1,6 @@
-export const PROTOCOL_FEE_BPS = 30; // 0.3% fee
-export const PROTOCOL_FEE_DISPLAY = `${PROTOCOL_FEE_BPS / 100}%`; // "0.3%"
+// Bridge fee: 195 nicks per 65536 nicks (~0.3%)
+export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
+export const PROTOCOL_FEE_DISPLAY = "0.3%";
 
 export const MIN_BRIDGE_AMOUNT_NOCK = 1;
 

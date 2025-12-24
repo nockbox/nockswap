@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { PROTOCOL_FEE_BPS } from "@/lib/constants";
 import {
   calcUSD,
   calcNOCK,
@@ -74,7 +73,7 @@ export function useSwapForm({
       if (numValue > 0) {
         // Convert to NOCK, apply fee, convert to "To" display mode
         const fromNockValue = toNock(numValue, isFromUsdMode);
-        const toNockValue = applyFee(fromNockValue, PROTOCOL_FEE_BPS);
+        const toNockValue = applyFee(fromNockValue);
         const toDisplayValue = fromNock(toNockValue, isToUsdMode);
         setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
       } else {
@@ -95,7 +94,7 @@ export function useSwapForm({
       if (numValue > 0) {
         // Convert to NOCK, reverse fee, convert to From display mode
         const toNockValue = toNock(numValue, isToUsdMode);
-        const fromNockValue = reverseFee(toNockValue, PROTOCOL_FEE_BPS);
+        const fromNockValue = reverseFee(toNockValue);
         const fromDisplayValue = fromNock(fromNockValue, isFromUsdMode);
         setFromAmount(formatWithCommas(fromDisplayValue.toFixed(2)));
       } else {
@@ -114,7 +113,7 @@ export function useSwapForm({
         const nockValue = calcNOCK(currentValue, nockPrice);
         setFromAmount(formatWithCommas(nockValue.toFixed(2)));
         // Recalculate "To" amount with new "From" mode
-        const toNockValue = applyFee(nockValue, PROTOCOL_FEE_BPS);
+        const toNockValue = applyFee(nockValue);
         const toDisplayValue = fromNock(toNockValue, isToUsdMode);
         setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
       } else {
@@ -122,7 +121,7 @@ export function useSwapForm({
         const usdValue = currentValue * nockPrice;
         setFromAmount(formatWithCommas(usdValue.toFixed(2)));
         // Recalculate To amount with new From mode
-        const toNockValue = applyFee(currentValue, PROTOCOL_FEE_BPS);
+        const toNockValue = applyFee(currentValue);
         const toDisplayValue = fromNock(toNockValue, isToUsdMode);
         setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
       }
@@ -138,7 +137,7 @@ export function useSwapForm({
         const nockValue = calcNOCK(currentValue, nockPrice);
         setToAmount(formatWithCommas(nockValue.toFixed(2)));
         // Recalculate "From" amount with new "To" mode
-        const fromNockValue = reverseFee(nockValue, PROTOCOL_FEE_BPS);
+        const fromNockValue = reverseFee(nockValue);
         const fromDisplayValue = fromNock(fromNockValue, isFromUsdMode);
         setFromAmount(formatWithCommas(fromDisplayValue.toFixed(2)));
       } else {
@@ -146,7 +145,7 @@ export function useSwapForm({
         const usdValue = currentValue * nockPrice;
         setToAmount(formatWithCommas(usdValue.toFixed(2)));
         // Recalculate "From" amount with new "To" mode
-        const fromNockValue = reverseFee(currentValue, PROTOCOL_FEE_BPS);
+        const fromNockValue = reverseFee(currentValue);
         const fromDisplayValue = fromNock(fromNockValue, isFromUsdMode);
         setFromAmount(formatWithCommas(fromDisplayValue.toFixed(2)));
       }
