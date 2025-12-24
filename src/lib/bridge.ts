@@ -314,6 +314,12 @@ export interface TransactionValidationResult {
   destinationAddress?: string;
   /** Belt encoding extracted from note data */
   belts?: [bigint, bigint, bigint];
+  /** Note data key */
+  noteDataKey?: string;
+  /** Bridge version */
+  version?: string;
+  /** Chain identifier */
+  chain?: string;
 }
 
 /**
@@ -467,6 +473,9 @@ export async function validateBridgeTransaction(
     // Decode and validate bridge note data
     let destinationAddress: string | undefined;
     let belts: [bigint, bigint, bigint] | undefined;
+    let validatedVersion: string | undefined;
+    let validatedChain: string | undefined;
+    const validatedNoteDataKey = bridgeEntry.key;
 
     try {
       const noun = wasm.Noun.cue(new Uint8Array(bridgeEntry.blob));
@@ -488,6 +497,7 @@ export async function validateBridgeTransaction(
           error: `Invalid bridge note data version: expected 0, got ${version}`,
         };
       }
+      validatedVersion = String(version);
 
       const chainAndBelts = decoded[1];
       if (!Array.isArray(chainAndBelts) || chainAndBelts.length !== 2) {
@@ -498,13 +508,14 @@ export async function validateBridgeTransaction(
       }
 
       const chain = chainAndBelts[0];
-      // %base = 0x65736162
+      // base = 0x65736162
       if (chain !== "65736162") {
         return {
           valid: false,
-          error: `Invalid bridge chain: expected %base (65736162), got ${chain}`,
+          error: `Invalid bridge chain: expected base (65736162), got ${chain}`,
         };
       }
+      validatedChain = String(chain);
 
       const beltData = chainAndBelts[1];
       if (!Array.isArray(beltData) || beltData.length !== 2) {
@@ -559,6 +570,9 @@ export async function validateBridgeTransaction(
       bridgeAmountNicks: bridgeOutput.assets,
       destinationAddress,
       belts,
+      noteDataKey: validatedNoteDataKey,
+      version: validatedVersion,
+      chain: validatedChain,
     };
   } catch (err) {
     return {

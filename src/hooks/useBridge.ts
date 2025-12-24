@@ -49,6 +49,12 @@ export interface TransactionPreview {
   txId: string;
   /** Jammed transaction bytes (for download) */
   jammedTransaction: Uint8Array;
+  /** Note data key from validated transaction */
+  noteDataKey: string;
+  /** Bridge version from validated transaction */
+  version: string;
+  /** Chain identifier from validated transaction (hex) */
+  chain: string;
 }
 
 export interface BridgeNoteData {
@@ -454,6 +460,9 @@ export function useBridge(): UseBridgeReturn {
           belts: preValidation.belts!,
           txId,
           jammedTransaction: nockchainTx.toJam(),
+          noteDataKey: preValidation.noteDataKey!,
+          version: preValidation.version!,
+          chain: preValidation.chain!,
         };
 
         setPreview(transactionPreview);

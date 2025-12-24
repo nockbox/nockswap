@@ -788,9 +788,9 @@ export default function ResultCard({
               Note Data
             </span>
             {[
-              { label: "Key", value: "%bridge" },
-              { label: "Version", value: "0" },
-              { label: "Chain", value: "%base (0x65736162)" },
+              { label: "Key", value: preview.noteDataKey },
+              { label: "Version", value: preview.version },
+              { label: "Chain", value: `${preview.chain === "65736162" ? "base" : preview.chain} (0x${preview.chain})` },
               { label: "Belt 1", value: `0x${preview.belts[0].toString(16)}` },
               { label: "Belt 2", value: `0x${preview.belts[1].toString(16)}` },
               { label: "Belt 3", value: `0x${preview.belts[2].toString(16)}` },
