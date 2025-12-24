@@ -30,6 +30,7 @@ export interface BridgeResult {
   fee: bigint;
   destinationAddress: string;
   amountInNicks: bigint;
+  signedJammedTx: Uint8Array;
 }
 
 export interface TransactionPreview {
@@ -522,13 +523,15 @@ export function useBridge(): UseBridgeReturn {
       // POST-SIGNING VALIDATION: Recreate TxBuilder and validate
       // This ensures the signed transaction is valid (fee sufficient, balanced, etc.)
       let signedTxId: string;
+      let signedJammedTx: Uint8Array;
       try {
         // Parse the signed transaction bytes back to RawTx
         const signedRawTx = wasm.RawTx.fromProtobuf(signedTxBytes);
 
-        // Get the signed TX ID
+        // Get the signed TX ID and convert to JAM format for download
         const signedNockchainTx = signedRawTx.toNockchainTx();
         signedTxId = signedNockchainTx.id?.value || "unknown";
+        signedJammedTx = signedNockchainTx.toJam();
 
         // Reconstruct notes and spend conditions from stored protobuf
         const txNotesData = prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] };
@@ -564,6 +567,7 @@ export function useBridge(): UseBridgeReturn {
         fee: prepared.fee,
         destinationAddress: prepared.destinationAddress,
         amountInNicks: prepared.amountInNicks,
+        signedJammedTx,
       };
 
       setResult(bridgeResult);

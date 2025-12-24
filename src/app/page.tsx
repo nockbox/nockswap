@@ -178,6 +178,7 @@ export default function Home() {
                     : ""
                 }
                 onHomeClick={handleHomeClick}
+                result={resultState.type === "success" ? resultState.result : undefined}
               />
             )}
           </div>

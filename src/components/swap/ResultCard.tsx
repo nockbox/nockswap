@@ -8,7 +8,7 @@ import {
 } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
-import { TransactionPreview, BridgeStatus } from "@/hooks/useBridge";
+import { TransactionPreview, BridgeStatus, BridgeResult } from "@/hooks/useBridge";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { formatNOCK } from "@/lib/utils";
 
@@ -30,6 +30,7 @@ interface ResultCardProps {
   onConfirm?: () => Promise<void>;
   preview?: TransactionPreview;
   bridgeStatus?: BridgeStatus;
+  result?: BridgeResult;
 }
 
 export default function ResultCard({
@@ -48,6 +49,7 @@ export default function ResultCard({
   onConfirm,
   preview,
   bridgeStatus,
+  result,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [downloadHover, setDownloadHover] = useState(false);
@@ -97,20 +99,36 @@ export default function ResultCard({
   };
 
   const handleDownloadTransaction = () => {
-    if (!preview?.jammedTransaction) return;
+    // For confirming screen: download unsigned (jammed) transaction
+    if (isConfirming && preview?.jammedTransaction) {
+      const buffer = new ArrayBuffer(preview.jammedTransaction.length);
+      new Uint8Array(buffer).set(preview.jammedTransaction);
+      const blob = new Blob([buffer], { type: "application/jam" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bridge-unsigned-${preview.txId}.tx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
 
-    // Download raw jammed transaction bytes
-    const buffer = new ArrayBuffer(preview.jammedTransaction.length);
-    new Uint8Array(buffer).set(preview.jammedTransaction);
-    const blob = new Blob([buffer], { type: "application/jam" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `bridge-${preview.txId}.tx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // For success screen: download signed transaction (JAM format)
+    if (isSuccess && result?.signedJammedTx) {
+      const buffer = new ArrayBuffer(result.signedJammedTx.length);
+      new Uint8Array(buffer).set(result.signedJammedTx);
+      const blob = new Blob([buffer], { type: "application/jam" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bridge-signed-${result.txId}.tx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   return (
@@ -524,7 +542,7 @@ export default function ResultCard({
                 opacity: 0.5,
               }}
             >
-              {isConfirming ? calculateBridgeFee() : calculateBridgeFee()}
+              {calculateBridgeFee()}
             </span>
           </div>
 
@@ -787,8 +805,8 @@ export default function ResultCard({
           </div>
         )}
 
-        {/* Download Transaction button - only show for confirming */}
-        {isConfirming && preview && (
+        {/* Download Transaction button */}
+        {((isConfirming && preview) || (isSuccess && result)) && (
           <button
             onClick={handleDownloadTransaction}
             onMouseEnter={() => setDownloadHover(true)}
@@ -818,7 +836,7 @@ export default function ResultCard({
                 fontWeight: 500,
               }}
             >
-              Download Transaction
+              {isConfirming ? "Download Unsigned Transaction" : "Download Signed Transaction"}
             </span>
           </button>
         )}
