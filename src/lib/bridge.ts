@@ -22,7 +22,7 @@ export { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES };
 export const GOLDILOCKS_PRIME = 2n ** 64n - 2n ** 32n + 1n;
 
 // Bridge note data key
-export const BRIDGE_NOTE_KEY = "%bridge";
+export const BRIDGE_NOTE_KEY = "bridge";
 
 // Helper to check if bridge is configured
 export const isBridgeConfigured = (): boolean => {
@@ -396,8 +396,8 @@ export async function validateBridgeTransaction(
     let bridgeOutput: (typeof allSeeds)[0] | null = null;
 
     for (const seed of allSeeds) {
-      // Check if this seed has %bridge note data (this is our primary identifier)
-      if (seed.noteData?.entries?.some((e) => e.key === "%bridge")) {
+      // Check if this seed has bridge note data (this is our primary identifier)
+      if (seed.noteData?.entries?.some((e) => e.key === BRIDGE_NOTE_KEY)) {
         bridgeOutput = seed;
         break;
       }
@@ -413,7 +413,7 @@ export async function validateBridgeTransaction(
     if (!bridgeOutput) {
       return {
         valid: false,
-        error: "No output with %bridge note data found in transaction",
+        error: `No output with '${BRIDGE_NOTE_KEY}' note data found in transaction`,
       };
     }
 
@@ -453,14 +453,14 @@ export async function validateBridgeTransaction(
       };
     }
 
-    // Find %bridge entry
+    // Find bridge entry
     const bridgeEntry = bridgeOutput.noteData.entries.find(
-      (e) => e.key === "%bridge"
+      (e) => e.key === BRIDGE_NOTE_KEY
     );
     if (!bridgeEntry) {
       return {
         valid: false,
-        error: "Bridge output missing %bridge note data entry",
+        error: `Bridge output missing '${BRIDGE_NOTE_KEY}' note data entry`,
       };
     }
 

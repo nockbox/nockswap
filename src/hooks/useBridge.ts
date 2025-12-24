@@ -628,7 +628,7 @@ export function useBridge(): UseBridgeReturn {
             };
 
             // Try to decode/cue the blob if it's the bridge key
-            if (entry.key === "%bridge" && entry.blob) {
+            if (entry.key === BRIDGE_NOTE_KEY && entry.blob) {
               try {
                 const noun = wasm.Noun.cue(new Uint8Array(entry.blob));
                 const decoded = noun.toJs();
