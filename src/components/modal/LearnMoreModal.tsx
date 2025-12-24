@@ -103,51 +103,128 @@ export default function LearnMoreModal({
             }}
           >
             <p style={{ margin: 0 }}>
-              <strong>1.</strong> You send NOCK to the bridge&apos;s multisig
+              <strong>1. You send NOCK</strong> to the bridge&apos;s multisig
               address on Nockchain. Your transaction includes your Base wallet
               address in the transaction data.
             </p>
             <p style={{ margin: 0 }}>
-              <strong>2.</strong> Bridge operators verify your transaction. Four
+              <strong>2. Bridge operators verify</strong> your transaction. Four
               trusted ecosystem partners—Zorp, NockBox, Lambda, and
               SWPS—independently confirm the deposit.
             </p>
             <p style={{ margin: 0 }}>
-              <strong>3.</strong> NOCK is minted on Base. Once verified, the
+              <strong>3. NOCK is minted on Base.</strong> Once verified, the
               equivalent amount of NOCK (ERC-20) is minted and sent to your Base
               wallet address.
             </p>
-            <p style={{ margin: 0 }}>
-              A 0.3% fee is deducted by the bridge to cover gas costs on Base.
-              The minimum bridge amount is 100,000 NOCK.
-            </p>
-            <p style={{ margin: 0, fontStyle: "italic" }}>
-              Please note: Each step may take some time depending on network
-              conditions and operator confirmation. There is currently no
-              progress indicator, your NOCK will arrive in your Base wallet once
-              all steps are complete.
-            </p>
-            <p style={{ margin: 0 }}>
-              NockSwap is built by NockBox Inc., the team behind{" "}
-              <a
-                href="https://iriswallet.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: theme.titleColor, textDecoration: "underline" }}
-              >
-                Iris Wallet
-              </a>{" "}
-              and{" "}
-              <a
-                href="https://pool.nockbox.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: theme.titleColor, textDecoration: "underline" }}
-              >
-                pool.nockbox.org
-              </a>
-              .
-            </p>
+          </div>
+
+          {/* Minimum deposit */}
+          <div
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              color: theme.textColor,
+            }}
+          >
+            <strong>Minimum deposit:</strong> 100,000 NOCK
+          </div>
+
+          {/* Fee */}
+          <div
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              color: theme.textColor,
+            }}
+          >
+            <strong>Fee:</strong> ~0.3% (covers gas costs on Base)
+          </div>
+
+          {/* Please note */}
+          <div
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              color: theme.textColor,
+            }}
+          >
+            <strong>Please note:</strong> Each step may take quite some time depending
+            on network conditions and operator confirmation. There is currently
+            no progress indicator—your NOCK will arrive in your Base wallet once
+            all steps are complete, it is expected to take multiple hours.
+          </div>
+
+          {/* Divider */}
+          <div
+            style={{
+              width: "100%",
+              height: 0,
+              borderTop: `1px solid ${theme.dividerColor}`,
+            }}
+          />
+
+          {/* Footer */}
+          <div
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              color: theme.textColor,
+            }}
+          >
+            The bridge infrastructure is built and maintained by{" "}
+            <a
+              href="https://zorp.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: theme.titleColor, textDecoration: "underline" }}
+            >
+              Zorp
+            </a>
+            . NockSwap is a front-end interface built by{" "}
+            <a
+              href="https://nockbox.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: theme.titleColor, textDecoration: "underline" }}
+            >
+              NockBox Inc.
+            </a>
+            , the team behind{" "}
+            <a
+              href="https://iriswallet.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: theme.titleColor, textDecoration: "underline" }}
+            >
+              Iris Wallet
+            </a>{" "}
+            and{" "}
+            <a
+              href="https://pool.nockbox.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: theme.titleColor, textDecoration: "underline" }}
+            >
+              pool.nockbox.org
+            </a>
+            .
           </div>
         </div>
       </div>
