@@ -161,10 +161,10 @@ export default function LearnMoreModal({
               color: theme.textColor,
             }}
           >
-            <strong>Please note:</strong> Each step may take some time depending
+            <strong>Please note:</strong> Each step may take quite some time depending
             on network conditions and operator confirmation. There is currently
             no progress indicator—your NOCK will arrive in your Base wallet once
-            all steps are complete.
+            all steps are complete, it is expected to take multiple hours.
           </div>
 
           {/* Divider */}
