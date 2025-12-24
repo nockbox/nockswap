@@ -1,5 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { PROTOCOL_FEE_NICKS_PER_NOCK } from "@/lib/constants";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -76,19 +78,27 @@ export function truncateAddress(address: string, chars: number = 6): string {
 }
 
 /**
- * Apply bridge fee to an amount (subtract fee)
- * @param amount - The amount before fee
- * @param feeBps - Fee in basis points (default 30 = 0.3%)
+ * Apply bridge fee to an amount
+ * floor(amountInNicks / 65536) * 195 nicks
+ * @param amountNock - The amount in NOCK before fee
  */
-export function applyFee(amount: number, feeBps: number = 30): number {
-  return amount * (1 - feeBps / 10000);
+export function applyFee(amountNock: number): number {
+  // Convert to nicks, calculate fee, convert back to NOCK
+  const amountInNicks = Math.floor(amountNock * NOCK_TO_NICKS);
+  const feeInNicks =
+    Math.floor(amountInNicks / NOCK_TO_NICKS) *
+    Number(PROTOCOL_FEE_NICKS_PER_NOCK);
+  const amountAfterFeeNicks = amountInNicks - feeInNicks;
+  return amountAfterFeeNicks / NOCK_TO_NICKS;
 }
 
 /**
  * Reverse bridge fee calculation (get original amount from after-fee amount)
- * @param amount - The amount after fee was applied
- * @param feeBps - Fee in basis points (default 30 = 0.3%)
+ * @param amountAfterFeeNock - The amount in NOCK after fee was applied
  */
-export function reverseFee(amount: number, feeBps: number = 30): number {
-  return amount / (1 - feeBps / 10000);
+export function reverseFee(amountAfterFeeNock: number): number {
+  // Approximate: amountAfterFee ≈ amount - (amount * 195 / 65536)
+  // So: amount ≈ amountAfterFee / (1 - 195/65536)
+  const feeRatio = Number(PROTOCOL_FEE_NICKS_PER_NOCK) / NOCK_TO_NICKS;
+  return amountAfterFeeNock / (1 - feeRatio);
 }

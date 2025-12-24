@@ -113,8 +113,8 @@ export default function LearnMoreModal({
               SWPS—independently confirm the deposit.
             </p>
             <p style={{ margin: 0 }}>
-              <strong>3.</strong> Nock is minted on Base. Once verified, the
-              equivalent amount of Nock (ERC-20) is minted and sent to your Base
+              <strong>3.</strong> NOCK is minted on Base. Once verified, the
+              equivalent amount of NOCK (ERC-20) is minted and sent to your Base
               wallet address.
             </p>
             <p style={{ margin: 0 }}>
@@ -124,7 +124,7 @@ export default function LearnMoreModal({
             <p style={{ margin: 0, fontStyle: "italic" }}>
               Please note: Each step may take some time depending on network
               conditions and operator confirmation. There is currently no
-              progress indicator, your Nock will arrive in your Base wallet once
+              progress indicator, your NOCK will arrive in your Base wallet once
               all steps are complete.
             </p>
             <p style={{ margin: 0 }}>
