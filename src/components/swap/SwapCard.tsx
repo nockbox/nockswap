@@ -910,7 +910,7 @@ export default function SwapCard({
             window.open(IRIS_CHROME_STORE_URL, "_blank");
           };
         } else if (!isConnected) {
-          buttonText = isConnecting ? "Connecting..." : "Connect Wallet";
+          buttonText = isConnecting ? "Connecting..." : "Iris Connect";
           buttonAction = connect;
           isDisabled = isConnecting;
         } else if (!isBridgeConfigured) {
@@ -942,6 +942,17 @@ export default function SwapCard({
               boxSizing: "border-box",
             }}
           >
+            {!isConnected && !isConnecting && (
+              <Image
+                src="/assets/iris-logo.svg"
+                alt="Iris"
+                width={20}
+                height={20}
+                style={{
+                  opacity: isDisabled || isLoading ? 0.4 : 1,
+                }}
+              />
+            )}
             <span
               style={{
                 color: "#000",
