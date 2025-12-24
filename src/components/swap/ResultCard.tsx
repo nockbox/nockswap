@@ -10,7 +10,6 @@ import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { TransactionPreview, BridgeStatus } from "@/hooks/useBridge";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
-import { beltsToEvmAddress } from "@/lib/bridge";
 import { formatNOCK } from "@/lib/utils";
 
 type ResultStatus = "success" | "failed" | "confirming";
@@ -51,6 +50,7 @@ export default function ResultCard({
   bridgeStatus,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
+  const [downloadHover, setDownloadHover] = useState(false);
   const isMobile = useIsMobile();
 
   const isSuccess = status === "success";
@@ -76,20 +76,6 @@ export default function ResultCard({
     const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
     const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
     return `${formatNOCK(amountNock)} NOCK`;
-  };
-
-  // Get reconstructed address from belts for verification
-  const getReconstructedAddress = (): string => {
-    if (!preview?.belts) return "";
-    try {
-      return beltsToEvmAddress(
-        preview.belts[0],
-        preview.belts[1],
-        preview.belts[2]
-      );
-    } catch {
-      return "Error reconstructing";
-    }
   };
 
   const handleCopyAddress = async () => {
@@ -602,6 +588,46 @@ export default function ResultCard({
               )}
             </div>
           </div>
+
+          {/* Wait time row - only show for confirming */}
+          {isConfirming && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                width: "100%",
+              }}
+            >
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
+                  opacity: 0.7,
+                }}
+              >
+                Wait time
+              </span>
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
+                }}
+              >
+                100 blocks
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Receiving address section */}
@@ -761,111 +787,42 @@ export default function ResultCard({
           </div>
         )}
 
-        {/* Note Data section - only show for confirming */}
+        {/* Download Transaction button - only show for confirming */}
         {isConfirming && preview && (
-          <div
+          <button
+            onClick={handleDownloadTransaction}
+            onMouseEnter={() => setDownloadHover(true)}
+            onMouseLeave={() => setDownloadHover(false)}
             style={{
               display: "flex",
-              padding: isMobile ? 12 : 16,
-              flexDirection: "column",
-              alignItems: "flex-start",
-              gap: 8,
               width: "100%",
+              height: 44,
+              padding: "12px 16px",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 8,
               borderRadius: 8,
-              background: theme.inputBg,
+              background: "transparent",
+              border: `1px solid ${theme.cardBorder}`,
+              cursor: "pointer",
               boxSizing: "border-box",
+              opacity: downloadHover ? 0.6 : 1,
+              transition: "opacity 0.15s ease",
             }}
           >
             <span
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
-                fontSize: isMobile ? 14 : 15,
-                fontWeight: 600,
-                lineHeight: "22px",
+                fontSize: 14,
+                fontWeight: 500,
               }}
             >
-              Note Data
+              Download Transaction
             </span>
-            {[
-              { label: "Key", value: preview.noteDataKey },
-              { label: "Version", value: preview.version },
-              { label: "Chain", value: `${preview.chain === "65736162" ? "base" : preview.chain} (0x${preview.chain})` },
-              { label: "Belt 1", value: `0x${preview.belts[0].toString(16)}` },
-              { label: "Belt 2", value: `0x${preview.belts[1].toString(16)}` },
-              { label: "Belt 3", value: `0x${preview.belts[2].toString(16)}` },
-              { label: "Reconstructed", value: getReconstructedAddress() },
-              { label: "Notes used", value: preview.notesUsed.toString() },
-            ].map(({ label, value }) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  width: "100%",
-                }}
-              >
-                <span
-                  style={{
-                    color: theme.textPrimary,
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 13,
-                    opacity: 0.7,
-                  }}
-                >
-                  {label}
-                </span>
-                <span
-                  style={{
-                    color: theme.textPrimary,
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    opacity: 0.9,
-                    maxWidth: "60%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {value}
-                </span>
-              </div>
-            ))}
-            {/* Download button */}
-            <button
-              onClick={handleDownloadTransaction}
-              style={{
-                display: "flex",
-                width: "100%",
-                height: 36,
-                padding: "8px 12px",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: 8,
-                borderRadius: 6,
-                background: "transparent",
-                border: `1px solid ${theme.cardBorder}`,
-                cursor: "pointer",
-                boxSizing: "border-box",
-                marginTop: 4,
-              }}
-            >
-              <span
-                style={{
-                  color: theme.textPrimary,
-                  fontFamily: "var(--font-inter), sans-serif",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  opacity: 0.7,
-                }}
-              >
-                Download Transaction
-              </span>
-            </button>
-          </div>
+          </button>
         )}
       </div>
-
 
       {/* Buttons section */}
       {isConfirming ? (
