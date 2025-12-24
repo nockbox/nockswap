@@ -513,16 +513,37 @@ export function useBridge(): UseBridgeReturn {
 
       setStatus("pending");
 
-      // POST-SIGNING VALIDATION: Re-validate the transaction before submitting
-      // This ensures the transaction we're about to submit is still valid
-      // (signing doesn't modify outputs, but this is a safety check)
-      await assertValidBridgeTransaction(prepared.rawTx, "post-signing");
-
-      // Load WASM for gRPC client
+      // Load WASM for validation and gRPC
       const wasm = await import("@nockbox/iris-wasm");
       if (typeof wasm.default === "function") {
         await wasm.default();
       }
+
+      // POST-SIGNING VALIDATION: Recreate TxBuilder and validate
+      // This ensures the signed transaction is valid (fee sufficient, balanced, etc.)
+      try {
+        // Parse the signed transaction bytes back to RawTx
+        const signedRawTx = wasm.RawTx.fromProtobuf(signedTxBytes);
+
+        // Reconstruct notes and spend conditions from stored protobuf
+        const txNotesData = prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] };
+        const notes = txNotesData.notes.map((n: unknown) => wasm.Note.fromProtobuf(n));
+        const spendConditions = txNotesData.spendConditions.map((sc: unknown) => wasm.SpendCondition.fromProtobuf(sc));
+
+        // Recreate TxBuilder from the signed transaction
+        const rebuiltBuilder = wasm.TxBuilder.fromTx(signedRawTx, notes, spendConditions);
+
+        // Validate the signed transaction
+        rebuiltBuilder.validate();
+
+        console.log("[Bridge] Transaction validation passed");
+      } catch (validationErr) {
+        console.error("[Bridge] Transaction validation failed:", validationErr);
+        throw new Error(`Transaction validation failed: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`);
+      }
+
+      // Our custom bridge validation (checks destination, amount, note data)
+      await assertValidBridgeTransaction(prepared.rawTx, "post-signing");
 
       // Get or create gRPC client
       if (!grpcClientRef.current) {
