@@ -828,8 +828,61 @@ export default function SwapCard({
         </div>
       </div>
 
-      {/* CTA Button */}
-      {(() => {
+      {/* Bottom section: Terms and CTA Button */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 16,
+          width: "100%",
+          paddingTop: 12,
+        }}
+      >
+        {/* Terms and Privacy */}
+        <div
+          style={{
+            width: "100%",
+            fontFamily: "var(--font-inter), sans-serif",
+            fontSize: 12,
+            fontWeight: 400,
+            lineHeight: "16px",
+            letterSpacing: 0,
+            color: theme.textPrimary,
+            textAlign: "center",
+            opacity: 0.5,
+            padding: "0 20px",
+          }}
+        >
+          By using NockSwap.io, you agree to our{" "}
+          <a
+            href="https://www.iriswallet.io/terms-of-use"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: theme.textPrimary,
+              textDecoration: "underline",
+            }}
+          >
+            Terms of Use
+          </a>{" "}
+          and{" "}
+          <a
+            href="https://www.iriswallet.io/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: theme.textPrimary,
+              textDecoration: "underline",
+            }}
+          >
+            Privacy Policy
+          </a>
+          .
+        </div>
+
+        {/* CTA Button */}
+        {(() => {
         // Determine button state and text
         let buttonText = "Swap with Iris";
         let buttonAction: () => void = handleSwap;
@@ -905,6 +958,7 @@ export default function SwapCard({
           </button>
         );
       })()}
+      </div>
     </div>
   );
 }
