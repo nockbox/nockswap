@@ -2,7 +2,7 @@
 export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
 export const PROTOCOL_FEE_DISPLAY = "0.3%";
 
-export const MIN_BRIDGE_AMOUNT_NOCK = 1;
+export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
 
 // Zorp Bridge 3-of-5 Multisig Configuration
 export const ZORP_BRIDGE_THRESHOLD = 3;

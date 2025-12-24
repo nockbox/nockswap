@@ -119,7 +119,7 @@ export default function LearnMoreModal({
             </p>
             <p style={{ margin: 0 }}>
               A 0.3% fee is deducted by the bridge to cover gas costs on Base.
-              The minimum bridge amount is 100,000 Nock.
+              The minimum bridge amount is 100,000 NOCK.
             </p>
             <p style={{ margin: 0, fontStyle: "italic" }}>
               Please note: Each step may take some time depending on network
