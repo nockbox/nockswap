@@ -521,9 +521,14 @@ export function useBridge(): UseBridgeReturn {
 
       // POST-SIGNING VALIDATION: Recreate TxBuilder and validate
       // This ensures the signed transaction is valid (fee sufficient, balanced, etc.)
+      let signedTxId: string;
       try {
         // Parse the signed transaction bytes back to RawTx
         const signedRawTx = wasm.RawTx.fromProtobuf(signedTxBytes);
+
+        // Get the signed TX ID
+        const signedNockchainTx = signedRawTx.toNockchainTx();
+        signedTxId = signedNockchainTx.id?.value || "unknown";
 
         // Reconstruct notes and spend conditions from stored protobuf
         const txNotesData = prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] };
@@ -536,7 +541,7 @@ export function useBridge(): UseBridgeReturn {
         // Validate the signed transaction
         rebuiltBuilder.validate();
 
-        console.log("[Bridge] Transaction validation passed");
+        console.log("[Bridge] Transaction validation passed, signed txId:", signedTxId);
       } catch (validationErr) {
         console.error("[Bridge] Transaction validation failed:", validationErr);
         throw new Error(`Transaction validation failed: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`);
@@ -555,7 +560,7 @@ export function useBridge(): UseBridgeReturn {
       await grpcClient.sendTransaction(signedTxBytes);
 
       const bridgeResult: BridgeResult = {
-        txId: prepared.nockchainTx as string,
+        txId: signedTxId,
         fee: prepared.fee,
         destinationAddress: prepared.destinationAddress,
         amountInNicks: prepared.amountInNicks,
