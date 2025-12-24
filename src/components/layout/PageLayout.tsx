@@ -348,7 +348,9 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
           >
             <span style={{ opacity: 0.5 }}>© 2025 Nockswap</span>
             <a
-              href="/terms"
+              href="https://www.iriswallet.io/terms-of-use"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
                 opacity: 0.5,
                 textDecoration: "underline",
@@ -358,7 +360,9 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
               Terms of Service
             </a>
             <a
-              href="/privacy"
+              href="https://www.iriswallet.io/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
                 opacity: 0.5,
                 textDecoration: "underline",
