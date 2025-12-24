@@ -77,6 +77,11 @@ body {
     color: #aaa;
     opacity: 1;
   }
+
+  .dark .amount-input::placeholder {
+    color: #666;
+    opacity: 1;
+  }
 }
 
 /* Skeleton loading animation */

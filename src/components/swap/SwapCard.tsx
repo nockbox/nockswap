@@ -260,6 +260,7 @@ export default function SwapCard({
                     if (isBelowMinimum) setShowAmountError(true);
                   }}
                   placeholder="0"
+                  className="amount-input"
                   style={{
                     fontFamily: "var(--font-lora), serif",
                     fontSize: 36,
@@ -519,6 +520,7 @@ export default function SwapCard({
                   onChange={(e) => handleToAmountChange(e.target.value)}
                   onBlur={() => handleAmountBlur(toAmount, setToAmount)}
                   placeholder="0"
+                  className="amount-input"
                   style={{
                     fontFamily: "var(--font-lora), serif",
                     fontSize: 36,
