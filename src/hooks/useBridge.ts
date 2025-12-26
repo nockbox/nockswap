@@ -14,7 +14,7 @@ import {
   assertValidBridgeTransaction,
 } from "@/lib/bridge";
 import { isEvmAddress } from "@/lib/validators";
-import { MIN_BRIDGE_AMOUNT_NOCK } from "@/lib/constants";
+import { MIN_BRIDGE_AMOUNT_NOCK, ZORP_BRIDGE_LOCK_ROOT } from "@/lib/constants";
 
 export type BridgeStatus =
   | "idle"
@@ -214,9 +214,6 @@ export function useBridge(): UseBridgeReturn {
         }
 
         // Validate amount
-        if (amountInNocks <= 0) {
-          throw new Error("Amount must be greater than 0");
-        }
         if (amountInNocks < MIN_BRIDGE_AMOUNT_NOCK) {
           throw new Error(`Minimum bridge amount is ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`);
         }
@@ -388,6 +385,14 @@ export function useBridge(): UseBridgeReturn {
             );
             const freshBridgeSpendCondition = wasm.SpendCondition.newPkh(freshBridgePkh);
             const freshZorpLockRoot = wasm.LockRoot.fromSpendCondition(freshBridgeSpendCondition);
+
+            // Verify lock root matches expected bridge address
+            const computedLockRoot = freshZorpLockRoot.hash?.value;
+            if (computedLockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
+              throw new Error(
+                `Bridge address mismatch. Check bridge configuration.`
+              );
+            }
 
             const seed = new wasm.Seed(
               null,

@@ -10,7 +10,6 @@ import { isEvmAddress } from "./validators";
 import {
   ZORP_BRIDGE_THRESHOLD,
   ZORP_BRIDGE_ADDRESSES,
-  ZORP_BRIDGE_LOCK_ROOT,
   MIN_BRIDGE_AMOUNT_NOCK,
 } from "./constants";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
@@ -347,93 +346,52 @@ export async function validateBridgeTransaction(
       await wasm.default();
     }
 
-    // Get seeds (outputs) from the raw transaction protobuf
-    // Structure: spends[].spend.spend_kind.Witness.seeds[]
-    // Each seed has: lock_root (string), note_data.entries[], gift.value (string)
-    const rawTxProtoTyped = rawTxProto as {
-      spends?: Array<{
-        spend?: {
-          spend_kind?: {
-            Witness?: {
-              seeds?: Array<{
-                lock_root?: string;
-                note_data?: {
-                  entries?: Array<{ key: string; blob: number[] }>;
-                };
-                gift?: { value?: string };
-              }>;
-            };
-          };
-        };
-      }>;
-    };
+    // Load transaction into WASM and get outputs
+    const rawTx = wasm.RawTx.fromProtobuf(rawTxProto);
+    const outputs = rawTx.outputs() as Array<InstanceType<typeof wasm.Note>>;
 
-    // Collect all seeds from all spends
-    const allSeeds: Array<{
+    if (outputs.length === 0) {
+      return { valid: false, error: "Transaction has no outputs" };
+    }
+
+    // Convert outputs to structured data for validation
+    const outputData: Array<{
       assets: bigint;
-      lockRoot: string | undefined;
-      noteData:
-        | { entries?: Array<{ key: string; blob: number[] }> }
-        | undefined;
+      noteData: { entries?: Array<{ key: string; blob: number[] }> };
     }> = [];
 
-    if (rawTxProtoTyped.spends) {
-      for (const spend of rawTxProtoTyped.spends) {
-        const seeds = spend.spend?.spend_kind?.Witness?.seeds;
-        if (seeds) {
-          for (const seed of seeds) {
-            allSeeds.push({
-              assets: BigInt(seed.gift?.value || 0),
-              lockRoot: seed.lock_root,
-              noteData: seed.note_data,
-            });
-          }
-        }
-      }
+    for (const output of outputs) {
+      const proto = output.toProtobuf() as {
+        note_version?: {
+          V1?: {
+            note_data?: { entries?: Array<{ key: string; blob: number[] }> };
+            assets?: { value?: string };
+          };
+        };
+      };
+
+      const v1 = proto.note_version?.V1;
+
+      outputData.push({
+        assets: BigInt(v1?.assets?.value || 0),
+        noteData: v1?.note_data || {},
+      });
     }
 
-    if (allSeeds.length === 0) {
-      return { valid: false, error: "Transaction has no outputs (seeds)" };
-    }
+    // Find the output to the bridge address by looking for "bridge" note data entry
+    let bridgeOutput: (typeof outputData)[0] | null = null;
 
-    console.log("[validateBridgeTransaction] Found seeds:", allSeeds.length);
-
-    // Find the output to the bridge address by looking for %bridge note data entry
-    let bridgeOutput: (typeof allSeeds)[0] | null = null;
-
-    for (const seed of allSeeds) {
-      // Check if this seed has bridge note data (this is our primary identifier)
-      if (seed.noteData?.entries?.some((e) => e.key === BRIDGE_NOTE_KEY)) {
-        bridgeOutput = seed;
+    for (const output of outputData) {
+      if (output.noteData?.entries?.some((e) => e.key === BRIDGE_NOTE_KEY)) {
+        bridgeOutput = output;
         break;
       }
     }
-
-    console.log(
-      "[validateBridgeTransaction] Bridge output found:",
-      !!bridgeOutput,
-      "assets:",
-      bridgeOutput?.assets?.toString()
-    );
 
     if (!bridgeOutput) {
       return {
         valid: false,
         error: `No output with '${BRIDGE_NOTE_KEY}' note data found in transaction`,
-      };
-    }
-
-    // Verify the lock root matches the expected bridge multisig address
-    if (bridgeOutput.lockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
-      console.error(
-        "[validateBridgeTransaction] Lock root mismatch:",
-        bridgeOutput.lockRoot,
-        "expected:",
-        ZORP_BRIDGE_LOCK_ROOT
-      );
-      return {
-        valid: false,
-        error: `Bridge output goes to wrong address. Expected bridge multisig, got: ${bridgeOutput.lockRoot}`,
       };
     }
 
