@@ -293,13 +293,7 @@ export function useBridge(): UseBridgeReturn {
           throw new Error("Failed to hash note - note object may be invalid");
         }
 
-        // Calculate total available balance
-        const totalAvailable = userNotes.reduce(
-          (sum, note) => sum + BigInt(note.assets),
-          0n
-        );
-
-        // Sort notes by assets (largest first) to minimize number of inputs
+        // Sort notes by largest first
         const noteIndices = userNotes.map((_, i) => i);
         noteIndices.sort((a, b) =>
           Number(BigInt(userNotes[b].assets) - BigInt(userNotes[a].assets))
@@ -316,41 +310,33 @@ export function useBridge(): UseBridgeReturn {
           return safeWords * DEFAULT_FEE_PER_WORD;
         };
 
-        // Select notes iteratively
-        const selectedNotes: typeof userNotes = [];
-        const selectedConditions: typeof userSpendConditions = [];
-        let selectedTotal = 0n;
+        // Select a single note
+        const singleNoteFee = estimateFeeForNotes(1);
+        const targetAmount = amountInNicks + singleNoteFee;
 
+        // Find the first note large enough
+        let selectedNoteIndex = -1;
         for (const i of noteIndices) {
-          selectedNotes.push(userNotes[i]);
-          selectedConditions.push(userSpendConditions[i]);
-          selectedTotal += BigInt(userNotes[i].assets);
-
-          const estimatedFee = estimateFeeForNotes(selectedNotes.length);
-          const targetAmount = amountInNicks + estimatedFee;
-
-          if (selectedTotal >= targetAmount) {
+          const noteAssets = BigInt(userNotes[i].assets);
+          if (noteAssets >= targetAmount) {
+            selectedNoteIndex = i;
             break;
           }
         }
 
-        // Final checks
-        const finalEstimatedFee = estimateFeeForNotes(selectedNotes.length);
-        const finalTarget = amountInNicks + finalEstimatedFee;
-
-        if (selectedTotal < finalTarget) {
+        if (selectedNoteIndex === -1) {
+          // Find the largest note for error message
+          const largestNoteNicks = noteIndices.length > 0 ? BigInt(userNotes[noteIndices[0]].assets) : 0n;
+          const largestNoteNock = Number(largestNoteNicks) / NOCK_TO_NICKS;
+          const targetNock = Number(targetAmount) / NOCK_TO_NICKS;
           throw new Error(
-            `Insufficient balance. Selected ${selectedNotes.length} notes with ${selectedTotal} nicks, ` +
-            `need ${amountInNicks} + ~${finalEstimatedFee} fee = ${finalTarget} nicks`
+            `No single note large enough. Bridge requires one note with at least ${targetNock.toLocaleString()} NOCK ` +
+            `(amount + fee). Your largest note has ${largestNoteNock.toLocaleString()} NOCK.`
           );
         }
 
-        if (totalAvailable < finalTarget) {
-          throw new Error(
-            `Insufficient total balance. Available: ${totalAvailable} nicks, ` +
-            `Required: ${amountInNicks} + ~${finalEstimatedFee} fee`
-          );
-        }
+        const selectedNotes = [userNotes[selectedNoteIndex]];
+        const selectedConditions = [userSpendConditions[selectedNoteIndex]];
 
         // Build transaction
         const builder = new wasm.TxBuilder(DEFAULT_FEE_PER_WORD);

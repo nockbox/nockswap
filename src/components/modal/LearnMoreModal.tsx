@@ -149,6 +149,23 @@ export default function LearnMoreModal({
             <strong>Fee:</strong> ~0.3% (covers gas costs on Base)
           </div>
 
+          {/* Single note limit */}
+          <div
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              color: theme.textColor,
+            }}
+          >
+            <strong>Single note limit:</strong> The bridge currently enforces a
+            limit of one note per transaction. You need a single note large
+            enough to cover your bridge amount plus the network fee.
+          </div>
+
           {/* Please note */}
           <div
             style={{
@@ -161,10 +178,11 @@ export default function LearnMoreModal({
               color: theme.textColor,
             }}
           >
-            <strong>Please note:</strong> Each step may take quite some time depending
-            on network conditions and operator confirmation. There is currently
-            no progress indicator—your NOCK will arrive in your Base wallet once
-            all steps are complete, it is expected to take multiple hours.
+            <strong>Please note:</strong> Each step may take quite some time
+            depending on network conditions and operator confirmation. There is
+            currently no progress indicator—your NOCK will arrive in your Base
+            wallet once all steps are complete, it is expected to take multiple
+            hours.
           </div>
 
           {/* Divider */}
