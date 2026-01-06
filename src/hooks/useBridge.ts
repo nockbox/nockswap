@@ -70,7 +70,7 @@ export interface UseBridgeReturn {
     destinationAddress: string,
     amountInNocks: number
   ) => Promise<TransactionPreview>;
-  confirmTransaction: () => Promise<BridgeResult>;
+  confirmTransaction: () => Promise<BridgeResult | undefined>;
   cancelTransaction: () => void;
   reset: () => void;
 
@@ -90,11 +90,9 @@ export interface UseBridgeReturn {
 interface PreparedTransaction {
   rawTx: unknown;
   txNotes: unknown;
-  nockchainTx: unknown;
   fee: bigint;
   destinationAddress: string;
   amountInNicks: bigint;
-  belts: [bigint, bigint, bigint];
   notesUsed: number;
 }
 
@@ -286,7 +284,7 @@ export function useBridge(): UseBridgeReturn {
           const baseWords = 20n;
           const wordsPerInput = 30n;
           const wordsPerOutput = 13n;
-          const numOutputs = BigInt(1 + numNotes);
+          const numOutputs = 2n; // bridge + refund (consolidated)
           const totalWords = baseWords + (BigInt(numNotes) * wordsPerInput) + (numOutputs * wordsPerOutput);
           const safeWords = (totalWords * 110n) / 100n;
           return safeWords * DEFAULT_FEE_PER_WORD;
@@ -333,6 +331,19 @@ export function useBridge(): UseBridgeReturn {
         // Build transaction
         const builder = new wasm.TxBuilder(DEFAULT_FEE_PER_WORD);
 
+        // Verify bridge lock root configuration once before building seeds
+        {
+          const testBridgePkh = new wasm.Pkh(
+            BigInt(ZORP_BRIDGE_THRESHOLD),
+            ZORP_BRIDGE_ADDRESSES
+          );
+          const testSpendCondition = wasm.SpendCondition.newPkh(testBridgePkh);
+          const testLockRoot = wasm.LockRoot.fromSpendCondition(testSpendCondition);
+          if (testLockRoot.hash?.value !== ZORP_BRIDGE_LOCK_ROOT) {
+            throw new Error(`Bridge address mismatch. Check bridge configuration.`);
+          }
+        }
+
         let remainingGift = amountInNicks;
 
         for (let i = 0; i < selectedNotes.length; i++) {
@@ -377,14 +388,6 @@ export function useBridge(): UseBridgeReturn {
             const freshBridgeSpendCondition = wasm.SpendCondition.newPkh(freshBridgePkh);
             const freshZorpLockRoot = wasm.LockRoot.fromSpendCondition(freshBridgeSpendCondition);
 
-            // Verify lock root matches expected bridge address
-            const computedLockRoot = freshZorpLockRoot.hash?.value;
-            if (computedLockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
-              throw new Error(
-                `Bridge address mismatch. Check bridge configuration.`
-              );
-            }
-
             const seed = new wasm.Seed(
               null,
               freshZorpLockRoot,
@@ -423,11 +426,9 @@ export function useBridge(): UseBridgeReturn {
             notes: txNotes.notes.map((n: { toProtobuf: () => unknown }) => n.toProtobuf()),
             spendConditions: txNotes.spendConditions.map((sc: { toProtobuf: () => unknown }) => sc.toProtobuf()),
           },
-          nockchainTx: nockchainTx.id?.value || "unknown",
           fee,
           destinationAddress,
           amountInNicks,
-          belts,
           notesUsed: selectedNotes.length,
         };
 
@@ -473,7 +474,7 @@ export function useBridge(): UseBridgeReturn {
   );
 
   // Confirm and submit prepared transaction
-  const confirmTransaction = useCallback(async (): Promise<BridgeResult> => {
+  const confirmTransaction = useCallback(async (): Promise<BridgeResult | undefined> => {
     const prepared = preparedTxRef.current;
 
     if (!prepared) {
@@ -572,7 +573,7 @@ export function useBridge(): UseBridgeReturn {
 
       if (isCancellation) {
         setStatus("confirming"); // Go back to confirming state
-        return undefined as unknown as BridgeResult;
+        return undefined;
       }
 
       console.error("Bridge error:", message);
