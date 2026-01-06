@@ -198,7 +198,9 @@ export function useBridge(): UseBridgeReturn {
 
         // Validate amount
         if (amountInNocks < MIN_BRIDGE_AMOUNT_NOCK) {
-          throw new Error(`Minimum bridge amount is ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`);
+          throw new Error(
+            `Minimum bridge amount is ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`
+          );
         }
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
@@ -240,7 +242,8 @@ export function useBridge(): UseBridgeReturn {
 
         // Parse notes from responses
         const userNotes: InstanceType<typeof wasm.Note>[] = [];
-        const userSpendConditions: InstanceType<typeof wasm.SpendCondition>[] = [];
+        const userSpendConditions: InstanceType<typeof wasm.SpendCondition>[] =
+          [];
 
         // Process simple notes
         if (simpleBalance?.notes) {
@@ -285,7 +288,10 @@ export function useBridge(): UseBridgeReturn {
           const wordsPerInput = 30n;
           const wordsPerOutput = 13n;
           const numOutputs = 2n; // bridge + refund (consolidated)
-          const totalWords = baseWords + (BigInt(numNotes) * wordsPerInput) + (numOutputs * wordsPerOutput);
+          const totalWords =
+            baseWords +
+            BigInt(numNotes) * wordsPerInput +
+            numOutputs * wordsPerOutput;
           const safeWords = (totalWords * 110n) / 100n;
           return safeWords * DEFAULT_FEE_PER_WORD;
         };
@@ -324,7 +330,7 @@ export function useBridge(): UseBridgeReturn {
           const targetNock = Number(finalTarget) / NOCK_TO_NICKS;
           throw new Error(
             `Insufficient balance. You have ${totalNock.toLocaleString()} NOCK total, ` +
-            `but need ${targetNock.toLocaleString()} NOCK (amount + fee).`
+              `but need ${targetNock.toLocaleString()} NOCK (amount + fee).`
           );
         }
 
@@ -338,9 +344,12 @@ export function useBridge(): UseBridgeReturn {
             ZORP_BRIDGE_ADDRESSES
           );
           const testSpendCondition = wasm.SpendCondition.newPkh(testBridgePkh);
-          const testLockRoot = wasm.LockRoot.fromSpendCondition(testSpendCondition);
+          const testLockRoot =
+            wasm.LockRoot.fromSpendCondition(testSpendCondition);
           if (testLockRoot.hash?.value !== ZORP_BRIDGE_LOCK_ROOT) {
-            throw new Error(`Bridge address mismatch. Check bridge configuration.`);
+            throw new Error(
+              `Bridge address mismatch. Check bridge configuration.`
+            );
           }
         }
 
@@ -351,7 +360,8 @@ export function useBridge(): UseBridgeReturn {
           const spendCondition = selectedConditions[i];
           const noteAssets = BigInt(note.assets);
 
-          const giftPortion = remainingGift < noteAssets ? remainingGift : noteAssets;
+          const giftPortion =
+            remainingGift < noteAssets ? remainingGift : noteAssets;
           remainingGift -= giftPortion;
 
           const noteClone = wasm.Note.fromProtobuf(note.toProtobuf());
@@ -377,7 +387,10 @@ export function useBridge(): UseBridgeReturn {
             const freshBridgeNounJs = buildBridgeNoun(destinationAddress);
             const bridgeNoun = wasm.Noun.fromJs(freshBridgeNounJs);
             const jammedBridgeData = bridgeNoun.jam();
-            const bridgeEntry = new wasm.NoteDataEntry(BRIDGE_NOTE_KEY, jammedBridgeData);
+            const bridgeEntry = new wasm.NoteDataEntry(
+              BRIDGE_NOTE_KEY,
+              jammedBridgeData
+            );
             const noteData = new wasm.NoteData([bridgeEntry]);
 
             // Create fresh lock root
@@ -385,8 +398,11 @@ export function useBridge(): UseBridgeReturn {
               BigInt(ZORP_BRIDGE_THRESHOLD),
               ZORP_BRIDGE_ADDRESSES
             );
-            const freshBridgeSpendCondition = wasm.SpendCondition.newPkh(freshBridgePkh);
-            const freshZorpLockRoot = wasm.LockRoot.fromSpendCondition(freshBridgeSpendCondition);
+            const freshBridgeSpendCondition =
+              wasm.SpendCondition.newPkh(freshBridgePkh);
+            const freshZorpLockRoot = wasm.LockRoot.fromSpendCondition(
+              freshBridgeSpendCondition
+            );
 
             const seed = new wasm.Seed(
               null,
@@ -417,14 +433,21 @@ export function useBridge(): UseBridgeReturn {
 
         // PRE-SIGNING VALIDATION: Validate the transaction before allowing signature
         // This ensures the transaction has correct bridge output, amount, and note data
-        const preValidation = await assertValidBridgeTransaction(rawTxProto, "pre-signing");
+        const preValidation = await assertValidBridgeTransaction(
+          rawTxProto,
+          "pre-signing"
+        );
 
         // Store prepared transaction data for confirmation
         preparedTxRef.current = {
           rawTx: rawTxProto,
           txNotes: {
-            notes: txNotes.notes.map((n: { toProtobuf: () => unknown }) => n.toProtobuf()),
-            spendConditions: txNotes.spendConditions.map((sc: { toProtobuf: () => unknown }) => sc.toProtobuf()),
+            notes: txNotes.notes.map((n: { toProtobuf: () => unknown }) =>
+              n.toProtobuf()
+            ),
+            spendConditions: txNotes.spendConditions.map(
+              (sc: { toProtobuf: () => unknown }) => sc.toProtobuf()
+            ),
           },
           fee,
           destinationAddress,
@@ -474,11 +497,15 @@ export function useBridge(): UseBridgeReturn {
   );
 
   // Confirm and submit prepared transaction
-  const confirmTransaction = useCallback(async (): Promise<BridgeResult | undefined> => {
+  const confirmTransaction = useCallback(async (): Promise<
+    BridgeResult | undefined
+  > => {
     const prepared = preparedTxRef.current;
 
     if (!prepared) {
-      throw new Error("No transaction prepared. Call prepareTransaction first.");
+      throw new Error(
+        "No transaction prepared. Call prepareTransaction first."
+      );
     }
 
     if (status !== "confirming") {
@@ -491,8 +518,12 @@ export function useBridge(): UseBridgeReturn {
       // Sign via wallet
       const signedTxBytes = await signRawTx({
         rawTx: prepared.rawTx,
-        notes: (prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }).notes,
-        spendConditions: (prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }).spendConditions,
+        notes: (
+          prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }
+        ).notes,
+        spendConditions: (
+          prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }
+        ).spendConditions,
       });
 
       setStatus("pending");
@@ -517,20 +548,40 @@ export function useBridge(): UseBridgeReturn {
         signedJammedTx = signedNockchainTx.toJam();
 
         // Reconstruct notes and spend conditions from stored protobuf
-        const txNotesData = prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] };
-        const notes = txNotesData.notes.map((n: unknown) => wasm.Note.fromProtobuf(n));
-        const spendConditions = txNotesData.spendConditions.map((sc: unknown) => wasm.SpendCondition.fromProtobuf(sc));
+        const txNotesData = prepared.txNotes as {
+          notes: unknown[];
+          spendConditions: unknown[];
+        };
+        const notes = txNotesData.notes.map((n: unknown) =>
+          wasm.Note.fromProtobuf(n)
+        );
+        const spendConditions = txNotesData.spendConditions.map((sc: unknown) =>
+          wasm.SpendCondition.fromProtobuf(sc)
+        );
 
         // Recreate TxBuilder from the signed transaction
-        const rebuiltBuilder = wasm.TxBuilder.fromTx(signedRawTx, notes, spendConditions);
+        const rebuiltBuilder = wasm.TxBuilder.fromTx(
+          signedRawTx,
+          notes,
+          spendConditions
+        );
 
         // Validate the signed transaction
         rebuiltBuilder.validate();
 
-        console.log("[Bridge] Transaction validation passed, signed txId:", signedTxId);
+        console.log(
+          "[Bridge] Transaction validation passed, signed txId:",
+          signedTxId
+        );
       } catch (validationErr) {
         console.error("[Bridge] Transaction validation failed:", validationErr);
-        throw new Error(`Transaction validation failed: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`);
+        throw new Error(
+          `Transaction validation failed: ${
+            validationErr instanceof Error
+              ? validationErr.message
+              : String(validationErr)
+          }`
+        );
       }
 
       // Our custom bridge validation (checks destination, amount, note data)
@@ -540,7 +591,9 @@ export function useBridge(): UseBridgeReturn {
       if (!grpcClientRef.current) {
         grpcClientRef.current = new wasm.GrpcClient(grpcEndpoint!);
       }
-      const grpcClient = grpcClientRef.current as InstanceType<typeof wasm.GrpcClient>;
+      const grpcClient = grpcClientRef.current as InstanceType<
+        typeof wasm.GrpcClient
+      >;
 
       // Submit to network
       await grpcClient.sendTransaction(signedTxBytes);
