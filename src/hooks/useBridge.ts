@@ -269,13 +269,6 @@ export function useBridge(): UseBridgeReturn {
           throw new Error("No spendable notes found in wallet");
         }
 
-        // Verify notes are valid by testing hash on first note
-        try {
-          userNotes[0].hash();
-        } catch {
-          throw new Error("Failed to hash note - note object may be invalid");
-        }
-
         // Sort notes by largest first
         const noteIndices = userNotes.map((_, i) => i);
         noteIndices.sort((a, b) =>
