@@ -5,7 +5,19 @@
  * field representation (3 belts).
  */
 
-import type { Note, SpendCondition, NockchainTx } from "@nockbox/iris-wasm";
+import type {
+  Digest,
+  Nicks,
+  NockchainTx,
+  Noun,
+  Note,
+  NoteData,
+  PbCom2RawTransaction,
+  SeedV1,
+  SpendCondition,
+  TxEngineSettings,
+} from "@nockbox/iris-wasm";
+import { base58 } from "@scure/base";
 import { isEvmAddress } from "./validators";
 import {
   ZORP_BRIDGE_THRESHOLD,
@@ -182,8 +194,7 @@ export async function createBridgeNoteData(
   }
 
   const bridgeNounJs = buildBridgeNoun(evmAddress);
-  const bridgeNoun = wasm.Noun.fromJs(bridgeNounJs);
-  return bridgeNoun.jam();
+  return wasm.jam(bridgeNounJs as unknown as Noun);
 }
 
 export interface BridgeTransactionParams {
@@ -208,6 +219,15 @@ export interface BridgeTransactionResult {
   txId: string;
   /** Calculated fee in nicks */
   fee: bigint;
+}
+
+function parseDigestString(value: string, field: string): Digest {
+  const trimmed = value.trim();
+  const bytes = base58.decode(trimmed);
+  if (bytes.length !== 40) {
+    throw new Error(`Invalid ${field}: expected a 40-byte base58 digest`);
+  }
+  return trimmed as Digest;
 }
 
 /**
@@ -240,62 +260,78 @@ export async function buildBridgeTransaction(
 
   // Create bridge note data
   const bridgeNounJs = buildBridgeNoun(params.destinationAddress);
-  const bridgeNoun = wasm.Noun.fromJs(bridgeNounJs);
-  const jammedBridgeData = bridgeNoun.jam();
-
-  // Create note data with bridge entry
-  const bridgeEntry = new wasm.NoteDataEntry(BRIDGE_NOTE_KEY, jammedBridgeData);
-  const noteData = new wasm.NoteData([bridgeEntry]);
+  const noteData = [
+    [BRIDGE_NOTE_KEY, bridgeNounJs as unknown as Noun],
+  ] as unknown as NoteData;
 
   // Derive lock root from multisig PKH spend condition
-  const bridgePkh = new wasm.Pkh(
+  const bridgePkh = wasm.pkhNew(
     BigInt(ZORP_BRIDGE_THRESHOLD),
-    ZORP_BRIDGE_ADDRESSES
+    ZORP_BRIDGE_ADDRESSES.map((addr) =>
+      parseDigestString(addr, "bridge address")
+    )
   );
-  const bridgeSpendCondition = wasm.SpendCondition.newPkh(bridgePkh);
-  const zorpLockRoot = wasm.LockRoot.fromSpendCondition(bridgeSpendCondition);
+  const bridgeSpendCondition = wasm.spendConditionNewPkh(bridgePkh);
+  const zorpLockRoot = bridgeSpendCondition;
+  const refundPkh = wasm.pkhSingle(parseDigestString(params.refundPkh, "refund PKH"));
+  const refundLock = wasm.spendConditionNewPkh(refundPkh);
 
   // Build transaction
-  const builder = new wasm.TxBuilder(
-    params.feeOverride ?? DEFAULT_FEE_PER_WORD
-  );
+  const txEngineSettings: TxEngineSettings = {
+    tx_engine_version: 1,
+    tx_engine_patch: 0,
+    min_fee: "256" as Nicks,
+    cost_per_word: String(params.feeOverride ?? DEFAULT_FEE_PER_WORD) as Nicks,
+    witness_word_div: 1,
+  };
+  const builder = new wasm.TxBuilder(txEngineSettings);
+  let remainingGift = params.amountInNicks;
 
   // Process each input note
   for (let i = 0; i < params.inputNotes.length; i++) {
     const note = params.inputNotes[i];
     const spendCondition = params.spendConditions[i];
+    const noteAssets = BigInt((note as { assets?: string }).assets ?? "0");
+    const giftPortion = remainingGift < noteAssets ? remainingGift : noteAssets;
+    remainingGift -= giftPortion;
 
     // Create spend builder
     const spendBuilder = new wasm.SpendBuilder(
       note,
       spendCondition,
-      wasm.SpendCondition.newPkh(wasm.Pkh.single(params.refundPkh))
+      null,
+      refundLock
     );
 
     // Create seed (output) to bridge
-    const seed = new wasm.Seed(
-      null, // output_source (null for non-coinbase)
-      zorpLockRoot,
-      params.amountInNicks,
-      noteData,
-      note.hash()
-    );
-
-    spendBuilder.seed(seed);
+    if (giftPortion > 0n) {
+      const seed = {
+        output_source: null,
+        lock_root: zorpLockRoot,
+        gift: giftPortion.toString() as Nicks,
+        note_data: noteData,
+        parent_hash: wasm.noteHash(note),
+      } as SeedV1;
+      spendBuilder.seed(seed);
+    }
     spendBuilder.computeRefund(false);
     builder.spend(spendBuilder);
   }
 
+  if (remainingGift > 0n) {
+    throw new Error("Insufficient input note balance for bridge amount");
+  }
+
   // Calculate and set fee
   builder.recalcAndSetFee(false);
-  const fee = builder.calcFee();
+  const fee = BigInt(builder.curFee());
 
   // Build (but don't sign - that happens via wallet)
   const transaction = builder.build();
 
   return {
     transaction,
-    txId: transaction.id.value,
+    txId: transaction.id,
     fee,
   };
 }
@@ -347,8 +383,14 @@ export async function validateBridgeTransaction(
     }
 
     // Load transaction into WASM and get outputs
-    const rawTx = wasm.RawTx.fromProtobuf(rawTxProto);
-    const outputs = rawTx.outputs() as Array<InstanceType<typeof wasm.Note>>;
+    const rawTx = wasm.rawTxFromProtobuf(
+      rawTxProto as PbCom2RawTransaction
+    );
+    const outputs = wasm.rawTxOutputs(
+      rawTx,
+      0,
+      wasm.txEngineSettingsV1BythosDefault()
+    );
 
     if (outputs.length === 0) {
       return { valid: false, error: "Transaction has no outputs" };
@@ -357,24 +399,15 @@ export async function validateBridgeTransaction(
     // Convert outputs to structured data for validation
     const outputData: Array<{
       assets: bigint;
-      noteData: { entries?: Array<{ key: string; blob: number[] }> };
+      noteData: NoteData;
     }> = [];
 
     for (const output of outputs) {
-      const proto = output.toProtobuf() as {
-        note_version?: {
-          V1?: {
-            note_data?: { entries?: Array<{ key: string; blob: number[] }> };
-            assets?: { value?: string };
-          };
-        };
-      };
-
-      const v1 = proto.note_version?.V1;
-
       outputData.push({
-        assets: BigInt(v1?.assets?.value || 0),
-        noteData: v1?.note_data || {},
+        assets: BigInt((output as { assets?: string }).assets ?? "0"),
+        noteData: ("note_data" in output
+          ? (output.note_data as NoteData)
+          : []) as NoteData,
       });
     }
 
@@ -382,7 +415,11 @@ export async function validateBridgeTransaction(
     let bridgeOutput: (typeof outputData)[0] | null = null;
 
     for (const output of outputData) {
-      if (output.noteData?.entries?.some((e) => e.key === BRIDGE_NOTE_KEY)) {
+      if (
+        output.noteData?.some(
+          (entry: [string, Noun]) => entry[0] === BRIDGE_NOTE_KEY
+        )
+      ) {
         bridgeOutput = output;
         break;
       }
@@ -407,10 +444,7 @@ export async function validateBridgeTransaction(
     }
 
     // Validate note data format
-    if (
-      !bridgeOutput.noteData?.entries ||
-      bridgeOutput.noteData.entries.length === 0
-    ) {
+    if (!bridgeOutput.noteData?.length) {
       return {
         valid: false,
         error: "Bridge output missing note data",
@@ -418,8 +452,8 @@ export async function validateBridgeTransaction(
     }
 
     // Find bridge entry
-    const bridgeEntry = bridgeOutput.noteData.entries.find(
-      (e) => e.key === BRIDGE_NOTE_KEY
+    const bridgeEntry = bridgeOutput.noteData.find(
+      (entry: [string, Noun]) => entry[0] === BRIDGE_NOTE_KEY
     );
     if (!bridgeEntry) {
       return {
@@ -433,11 +467,17 @@ export async function validateBridgeTransaction(
     let belts: [bigint, bigint, bigint] | undefined;
     let validatedVersion: string | undefined;
     let validatedChain: string | undefined;
-    const validatedNoteDataKey = bridgeEntry.key;
+    const validatedNoteDataKey = bridgeEntry[0];
 
     try {
-      const noun = wasm.Noun.cue(new Uint8Array(bridgeEntry.blob));
-      const decoded = noun.toJs() as unknown;
+      const entryValue = bridgeEntry[1] as unknown;
+      const decoded = (Array.isArray(entryValue)
+        ? entryValue
+        : wasm.cue(
+            entryValue instanceof Uint8Array
+              ? entryValue
+              : new Uint8Array(entryValue as number[])
+          )) as unknown;
 
       // Expected structure: [version, [chain, [belt1, [belt2, belt3]]]]
       if (!Array.isArray(decoded) || decoded.length !== 2) {

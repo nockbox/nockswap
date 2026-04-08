@@ -2,6 +2,19 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { base58 } from "@scure/base";
+import type {
+  BlockHeight,
+  Digest,
+  Nicks,
+  Note,
+  NoteData,
+  Noun,
+  PbCom2Note,
+  PbCom2RawTransaction,
+  SpendCondition,
+  TxEngineSettings,
+} from "@nockbox/iris-wasm";
 import {
   ZORP_BRIDGE_THRESHOLD,
   ZORP_BRIDGE_ADDRESSES,
@@ -94,6 +107,15 @@ interface PreparedTransaction {
   destinationAddress: string;
   amountInNicks: bigint;
   notesUsed: number;
+}
+
+function parseDigestString(value: string, field: string): Digest {
+  const trimmed = value.trim();
+  const bytes = base58.decode(trimmed);
+  if (bytes.length !== 40) {
+    throw new Error(`Invalid ${field}: expected a 40-byte base58 digest`);
+  }
+  return trimmed as Digest;
 }
 
 export function useBridge(): UseBridgeReturn {
@@ -204,8 +226,6 @@ export function useBridge(): UseBridgeReturn {
         }
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
-        const belts = evmAddressToBelts(destinationAddress);
-
         // Load and initialize WASM module
         const wasm = await import("@nockbox/iris-wasm");
         if (typeof wasm.default === "function") {
@@ -221,35 +241,38 @@ export function useBridge(): UseBridgeReturn {
         >;
 
         // Derive first-names from PKH (notes are indexed by first-name, not address)
-        const simplePkh = wasm.Pkh.single(address);
-        const simpleSpendCondition = wasm.SpendCondition.newPkh(simplePkh);
-        const simpleFirstName = simpleSpendCondition.firstName();
+        const digestAddress = parseDigestString(address, "wallet address");
+        const simplePkh = wasm.pkhSingle(digestAddress);
+        const simpleSpendCondition = wasm.spendConditionNewPkh(simplePkh);
+        const simpleFirstName = wasm.spendConditionFirstName(simpleSpendCondition);
 
         // Coinbase notes use PKH + TIM spend condition
-        const pkhLeaf = wasm.LockPrimitive.newPkh(wasm.Pkh.single(address));
-        const timLeaf = wasm.LockPrimitive.newTim(wasm.LockTim.coinbase());
-        const coinbaseSpendCondition = new wasm.SpendCondition([
-          pkhLeaf,
-          timLeaf,
-        ]);
-        const coinbaseFirstName = coinbaseSpendCondition.firstName();
+        const coinbaseSpendCondition: SpendCondition = [
+          { tag: "pkh", ...simplePkh },
+          {
+            tag: "tim" as const,
+            rel: { min: 100 as BlockHeight, max: null },
+            abs: { min: null, max: null },
+          },
+        ];
+        const coinbaseFirstName =
+          wasm.spendConditionFirstName(coinbaseSpendCondition);
 
         // Fetch notes by first-name (both simple and coinbase)
         const [simpleBalance, coinbaseBalance] = await Promise.all([
-          grpcClient.getBalanceByFirstName(simpleFirstName.value),
-          grpcClient.getBalanceByFirstName(coinbaseFirstName.value),
+          grpcClient.getBalanceByFirstName(simpleFirstName),
+          grpcClient.getBalanceByFirstName(coinbaseFirstName),
         ]);
 
         // Parse notes from responses
-        const userNotes: InstanceType<typeof wasm.Note>[] = [];
-        const userSpendConditions: InstanceType<typeof wasm.SpendCondition>[] =
-          [];
+        const userNotes: Note[] = [];
+        const userSpendConditions: SpendCondition[] = [];
 
         // Process simple notes
         if (simpleBalance?.notes) {
           for (const noteEntry of simpleBalance.notes) {
-            const pbNote = noteEntry.note || noteEntry;
-            const note = wasm.Note.fromProtobuf(pbNote);
+            const pbNote = (noteEntry.note || noteEntry) as PbCom2Note;
+            const note = wasm.noteFromProtobuf(pbNote);
             userNotes.push(note);
             userSpendConditions.push(simpleSpendCondition);
           }
@@ -258,8 +281,8 @@ export function useBridge(): UseBridgeReturn {
         // Process coinbase notes
         if (coinbaseBalance?.notes) {
           for (const noteEntry of coinbaseBalance.notes) {
-            const pbNote = noteEntry.note || noteEntry;
-            const note = wasm.Note.fromProtobuf(pbNote);
+            const pbNote = (noteEntry.note || noteEntry) as PbCom2Note;
+            const note = wasm.noteFromProtobuf(pbNote);
             userNotes.push(note);
             userSpendConditions.push(coinbaseSpendCondition);
           }
@@ -328,18 +351,26 @@ export function useBridge(): UseBridgeReturn {
         }
 
         // Build transaction
-        const builder = new wasm.TxBuilder(DEFAULT_FEE_PER_WORD);
+        const txEngineSettings: TxEngineSettings = {
+          tx_engine_version: 1 as const,
+          tx_engine_patch: 0,
+          min_fee: "256" as Nicks,
+          cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
+          witness_word_div: 1,
+        };
+        const builder = new wasm.TxBuilder(txEngineSettings);
 
         // Verify bridge lock root configuration once before building seeds
         {
-          const testBridgePkh = new wasm.Pkh(
+          const testBridgePkh = wasm.pkhNew(
             BigInt(ZORP_BRIDGE_THRESHOLD),
-            ZORP_BRIDGE_ADDRESSES
+            ZORP_BRIDGE_ADDRESSES.map((a) =>
+              parseDigestString(a, "bridge address")
+            )
           );
-          const testSpendCondition = wasm.SpendCondition.newPkh(testBridgePkh);
-          const testLockRoot =
-            wasm.LockRoot.fromSpendCondition(testSpendCondition);
-          if (testLockRoot.hash?.value !== ZORP_BRIDGE_LOCK_ROOT) {
+          const testSpendCondition = wasm.spendConditionNewPkh(testBridgePkh);
+          const testLockRoot = wasm.lockHash(testSpendCondition);
+          if (testLockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
             throw new Error(
               `Bridge address mismatch. Check bridge configuration.`
             );
@@ -357,53 +388,49 @@ export function useBridge(): UseBridgeReturn {
             remainingGift < noteAssets ? remainingGift : noteAssets;
           remainingGift -= giftPortion;
 
-          const noteClone = wasm.Note.fromProtobuf(note.toProtobuf());
-          const spendConditionClone = wasm.SpendCondition.fromProtobuf(
-            spendCondition.toProtobuf()
+          const noteClone = wasm.noteFromProtobuf(wasm.noteToProtobuf(note));
+          const spendConditionClone = wasm.spendConditionFromProtobuf(
+            wasm.spendConditionToProtobuf(spendCondition)
           );
 
           // Create refund spend condition (back to user)
-          const refundSpendCondition = wasm.SpendCondition.newPkh(
-            wasm.Pkh.single(address)
+          const refundSpendCondition = wasm.spendConditionNewPkh(
+            wasm.pkhSingle(digestAddress)
           );
 
           const spendBuilder = new wasm.SpendBuilder(
             noteClone,
             spendConditionClone,
+            null,
             refundSpendCondition
           );
 
           if (giftPortion > 0n) {
-            const parentHash = note.hash();
+            const parentHash = wasm.noteHash(note);
 
             // Put bridge noteData on all seeds
             const freshBridgeNounJs = buildBridgeNoun(destinationAddress);
-            const bridgeNoun = wasm.Noun.fromJs(freshBridgeNounJs);
-            const jammedBridgeData = bridgeNoun.jam();
-            const bridgeEntry = new wasm.NoteDataEntry(
-              BRIDGE_NOTE_KEY,
-              jammedBridgeData
-            );
-            const noteData = new wasm.NoteData([bridgeEntry]);
+            const noteData: NoteData = [
+              [BRIDGE_NOTE_KEY, freshBridgeNounJs as unknown as Noun],
+            ];
 
             // Create fresh lock root
-            const freshBridgePkh = new wasm.Pkh(
+            const freshBridgePkh = wasm.pkhNew(
               BigInt(ZORP_BRIDGE_THRESHOLD),
-              ZORP_BRIDGE_ADDRESSES
+              ZORP_BRIDGE_ADDRESSES.map((a) =>
+                parseDigestString(a, "bridge address")
+              )
             );
             const freshBridgeSpendCondition =
-              wasm.SpendCondition.newPkh(freshBridgePkh);
-            const freshZorpLockRoot = wasm.LockRoot.fromSpendCondition(
-              freshBridgeSpendCondition
-            );
+              wasm.spendConditionNewPkh(freshBridgePkh);
 
-            const seed = new wasm.Seed(
-              null,
-              freshZorpLockRoot,
-              giftPortion,
-              noteData,
-              parentHash
-            );
+            const seed = {
+              output_source: null,
+              lock_root: freshBridgeSpendCondition,
+              gift: giftPortion.toString() as Nicks,
+              note_data: noteData,
+              parent_hash: parentHash,
+            };
 
             spendBuilder.seed(seed);
           }
@@ -414,15 +441,14 @@ export function useBridge(): UseBridgeReturn {
 
         // Calculate exact fee
         builder.recalcAndSetFee(false);
-        const fee = builder.calcFee();
+        const fee = BigInt(builder.curFee());
 
         // Build transaction
         const nockchainTx = builder.build();
-        const rawTx = nockchainTx.toRawTx();
-        const txNotes = builder.allNotes();
+        const rawTx = wasm.nockchainTxToRawTx(nockchainTx);
 
         // Store prepared transaction data
-        const rawTxProto = rawTx.toProtobuf();
+        const rawTxProto = wasm.rawTxToProtobuf(rawTx);
 
         // PRE-SIGNING VALIDATION: Validate the transaction before allowing signature
         // This ensures the transaction has correct bridge output, amount, and note data
@@ -435,11 +461,11 @@ export function useBridge(): UseBridgeReturn {
         preparedTxRef.current = {
           rawTx: rawTxProto,
           txNotes: {
-            notes: txNotes.notes.map((n: { toProtobuf: () => unknown }) =>
-              n.toProtobuf()
+            notes: selectedNotes.map((n: unknown) =>
+              wasm.noteToProtobuf(n as Note)
             ),
-            spendConditions: txNotes.spendConditions.map(
-              (sc: { toProtobuf: () => unknown }) => sc.toProtobuf()
+            spendConditions: selectedConditions.map((sc: SpendCondition) =>
+              wasm.spendConditionToProtobuf(sc)
             ),
           },
           fee,
@@ -450,7 +476,7 @@ export function useBridge(): UseBridgeReturn {
 
         // Create preview using VALIDATED data from transaction (not UI values)
         // This ensures the confirmation screen shows what's actually in the transaction
-        const txId = nockchainTx.id?.value || "unknown";
+        const txId = nockchainTx.id || "unknown";
         const transactionPreview: TransactionPreview = {
           amountInNicks: preValidation.bridgeAmountNicks!,
           fee,
@@ -459,7 +485,7 @@ export function useBridge(): UseBridgeReturn {
           destinationAddress: preValidation.destinationAddress!,
           belts: preValidation.belts!,
           txId,
-          jammedTransaction: nockchainTx.toJam(),
+          jammedTransaction: wasm.jam(wasm.nockchainTxToNoun(nockchainTx)),
           noteDataKey: preValidation.noteDataKey!,
           version: preValidation.version!,
           chain: preValidation.chain!,
@@ -533,30 +559,30 @@ export function useBridge(): UseBridgeReturn {
       let signedJammedTx: Uint8Array;
       try {
         // Parse the signed transaction bytes back to RawTx
-        const signedRawTx = wasm.RawTx.fromProtobuf(signedTxBytes);
+        const signedRawTx = wasm.rawTxFromProtobuf(
+          signedTxBytes as unknown as PbCom2RawTransaction
+        );
 
         // Get the signed TX ID and convert to JAM format for download
-        const signedNockchainTx = signedRawTx.toNockchainTx();
-        signedTxId = signedNockchainTx.id?.value || "unknown";
-        signedJammedTx = signedNockchainTx.toJam();
+        const signedNockchainTx = wasm.rawTxV1ToNockchainTx(
+          signedRawTx as Parameters<typeof wasm.rawTxV1ToNockchainTx>[0]
+        );
+        signedTxId = signedNockchainTx.id || "unknown";
+        signedJammedTx = wasm.jam(wasm.nockchainTxToNoun(signedNockchainTx));
 
         // Reconstruct notes and spend conditions from stored protobuf
-        const txNotesData = prepared.txNotes as {
-          notes: unknown[];
-          spendConditions: unknown[];
+        const txEngineSettings: TxEngineSettings = {
+          tx_engine_version: 1 as const,
+          tx_engine_patch: 0,
+          min_fee: "256" as Nicks,
+          cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
+          witness_word_div: 1,
         };
-        const notes = txNotesData.notes.map((n: unknown) =>
-          wasm.Note.fromProtobuf(n)
-        );
-        const spendConditions = txNotesData.spendConditions.map((sc: unknown) =>
-          wasm.SpendCondition.fromProtobuf(sc)
-        );
 
         // Recreate TxBuilder from the signed transaction
-        const rebuiltBuilder = wasm.TxBuilder.fromTx(
+        const rebuiltBuilder = wasm.TxBuilder.fromRawTx(
           signedRawTx,
-          notes,
-          spendConditions
+          txEngineSettings
         );
 
         // Validate the signed transaction
@@ -578,7 +604,10 @@ export function useBridge(): UseBridgeReturn {
       }
 
       // Our custom bridge validation (checks destination, amount, note data)
-      await assertValidBridgeTransaction(prepared.rawTx, "post-signing");
+      await assertValidBridgeTransaction(
+        signedTxBytes as unknown as PbCom2RawTransaction,
+        "post-signing"
+      );
 
       // Get or create gRPC client
       if (!grpcClientRef.current) {
@@ -589,7 +618,9 @@ export function useBridge(): UseBridgeReturn {
       >;
 
       // Submit to network
-      await grpcClient.sendTransaction(signedTxBytes);
+      await grpcClient.sendTransaction(
+        signedTxBytes as unknown as PbCom2RawTransaction
+      );
 
       const bridgeResult: BridgeResult = {
         txId: signedTxId,
