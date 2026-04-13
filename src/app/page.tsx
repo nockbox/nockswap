@@ -6,18 +6,37 @@ import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
 import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_NICKS_PER_NOCK } from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
+import { useNockBurn } from "@/hooks/useNockBurn";
+import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
+import { getSwapCardTheme } from "@/lib/theme";
+import { isEvmWalletUserRejection } from "@/lib/evmWalletErrors";
+import { transactionExplorerUrl } from "@/lib/blockExplorer";
+import { useChainId } from "wagmi";
 
 type ResultState =
   | { type: "idle" }
   | { type: "confirming"; preview: TransactionPreview }
+  | {
+      type: "confirming_burn";
+      amountNock: number;
+      destinationNockAddress: string;
+    }
   | { type: "success"; result: BridgeResult }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "burn_submitted"; txHash: string }
+  | { type: "burn_cancelled" };
 
 export default function Home() {
   const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
+  const chainId = useChainId();
   const { confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
+  const { burnNock, isBurning: isBurnPending } = useNockBurn();
+  const burnGasAmountNock =
+    resultState.type === "confirming_burn" ? resultState.amountNock : null;
+  const { networkFeeDisplay: burnNetworkFeeDisplay } =
+    useNockBurnGasEstimate(burnGasAmountNock);
 
   const handlePrepareSuccess = (preview: TransactionPreview) => {
     setResultState({ type: "confirming", preview });
@@ -25,6 +44,13 @@ export default function Home() {
 
   const handleSwapError = (message: string) => {
     setResultState({ type: "error", message });
+  };
+
+  const handlePrepareBurnSuccess = (payload: {
+    amountNock: number;
+    destinationNockAddress: string;
+  }) => {
+    setResultState({ type: "confirming_burn", ...payload });
   };
 
   const handleHomeClick = () => {
@@ -50,6 +76,22 @@ export default function Home() {
     setResultState({ type: "idle" });
   };
 
+  const handleConfirmBurn = async () => {
+    if (resultState.type !== "confirming_burn") return;
+    try {
+      const txHash = await burnNock(resultState.amountNock);
+      setResultState({ type: "burn_submitted", txHash });
+    } catch (err) {
+      if (isEvmWalletUserRejection(err)) {
+        setResultState({ type: "burn_cancelled" });
+        return;
+      }
+      const errorMessage =
+        err instanceof Error ? err.message : "Burn transaction failed";
+      setResultState({ type: "error", message: errorMessage });
+    }
+  };
+
   // Convert nicks to NOCK
   const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
 
@@ -63,7 +105,13 @@ export default function Home() {
 
   return (
     <PageLayout>
-      {({ isDarkMode, theme }) => (
+      {({ isDarkMode, theme }) => {
+        const cardTheme = getSwapCardTheme(isDarkMode);
+        const burnSubmittedTxUrl =
+          resultState.type === "burn_submitted"
+            ? transactionExplorerUrl(chainId, resultState.txHash)
+            : null;
+        return (
         <>
           {/* Title section */}
           <div
@@ -99,7 +147,7 @@ export default function Home() {
                 margin: 0,
               }}
             >
-              Your Bridge from Nockchain to Base
+              Your Nockchain to Bridge
             </p>
           </div>
 
@@ -118,9 +166,144 @@ export default function Home() {
                 isDarkMode={isDarkMode}
                 onSwapError={handleSwapError}
                 onPrepareSuccess={handlePrepareSuccess}
+                onPrepareBurnSuccess={handlePrepareBurnSuccess}
                 prepareTransaction={prepareTransaction}
                 bridgeStatus={bridgeStatus}
               />
+            ) : resultState.type === "burn_submitted" ? (
+              <div
+                style={{
+                  marginTop: 0,
+                  width: "100%",
+                  maxWidth: 480,
+                  padding: 20,
+                  boxSizing: "border-box",
+                  borderRadius: 16,
+                  border: `1px solid ${cardTheme.cardBorder}`,
+                  background: cardTheme.cardBg,
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 12px",
+                    fontFamily: "var(--font-lora), serif",
+                    fontSize: 24,
+                    fontWeight: 600,
+                    color: cardTheme.textPrimary,
+                  }}
+                >
+                  Burn submitted
+                </p>
+                <p
+                  style={{
+                    margin: "0 0 8px",
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 13,
+                    color: cardTheme.textPrimary,
+                    opacity: 0.65,
+                  }}
+                >
+                  Transaction hash
+                </p>
+                <p
+                  style={{
+                    margin: "0 0 20px",
+                    fontFamily: "monospace",
+                    fontSize: 12,
+                    wordBreak: "break-all",
+                    color: cardTheme.textPrimary,
+                  }}
+                >
+                  {burnSubmittedTxUrl ? (
+                    <a
+                      href={burnSubmittedTxUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: "inherit",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {resultState.txHash}
+                    </a>
+                  ) : (
+                    resultState.txHash
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleHomeClick}
+                  style={{
+                    width: "100%",
+                    height: 48,
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#ffc413",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 16,
+                    fontWeight: 500,
+                  }}
+                >
+                  Back to swap
+                </button>
+              </div>
+            ) : resultState.type === "burn_cancelled" ? (
+              <div
+                style={{
+                  marginTop: 0,
+                  width: "100%",
+                  maxWidth: 480,
+                  padding: 20,
+                  boxSizing: "border-box",
+                  borderRadius: 16,
+                  border: `1px solid ${cardTheme.cardBorder}`,
+                  background: cardTheme.cardBg,
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 8px",
+                    fontFamily: "var(--font-lora), serif",
+                    fontSize: 24,
+                    fontWeight: 600,
+                    color: cardTheme.textPrimary,
+                  }}
+                >
+                  Transaction cancelled
+                </p>
+                <p
+                  style={{
+                    margin: "0 0 20px",
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 14,
+                    lineHeight: "22px",
+                    color: cardTheme.textPrimary,
+                    opacity: 0.65,
+                  }}
+                >
+                  You closed the wallet without signing. Nothing was submitted
+                  on-chain.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleHomeClick}
+                  style={{
+                    width: "100%",
+                    height: 48,
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#ffc413",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-inter), sans-serif",
+                    fontSize: 16,
+                    fontWeight: 500,
+                  }}
+                >
+                  Back to swap
+                </button>
+              </div>
             ) : resultState.type === "confirming" ? (
               <ResultCard
                 isDarkMode={isDarkMode}
@@ -137,6 +320,30 @@ export default function Home() {
                 onConfirm={handleConfirm}
                 preview={resultState.preview}
                 bridgeStatus={bridgeStatus}
+              />
+            ) : resultState.type === "confirming_burn" ? (
+              <ResultCard
+                isDarkMode={isDarkMode}
+                status="confirming"
+                flowDirection="base_to_nock"
+                networkFeePercent={PROTOCOL_FEE_DISPLAY}
+                networkFeeAmount={burnNetworkFeeDisplay}
+                totalNock={`${formatNOCK(resultState.amountNock)} NOCK`}
+                totalUsd=""
+                receivingAddress={truncateAddress(
+                  resultState.destinationNockAddress
+                )}
+                fullReceivingAddress={resultState.destinationNockAddress}
+                transactionId=""
+                fullTransactionId=""
+                onHomeClick={handleCancel}
+                onConfirm={handleConfirmBurn}
+                bridgeStatus={bridgeStatus}
+                confirmingAmountInNicks={BigInt(
+                  Math.floor(resultState.amountNock * NOCK_TO_NICKS)
+                )}
+                nockchainNetworkFeeAmount="0 NOCK"
+                confirmSubmitting={isBurnPending}
               />
             ) : (
               <ResultCard
@@ -183,7 +390,8 @@ export default function Home() {
             )}
           </div>
         </>
-      )}
+        );
+      }}
     </PageLayout>
   );
 }
