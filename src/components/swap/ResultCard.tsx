@@ -39,6 +39,10 @@ interface ResultCardProps {
   confirmingAmountInNicks?: bigint;
   /** When set, an extra fee row is shown (intended for Base → Nock). */
   nockchainNetworkFeeAmount?: string;
+  /** While the Nockchain fee estimate is in flight (before `nockchainNetworkFeeAmount` is final). */
+  nockchainNetworkFeeLoading?: boolean;
+  /** Base → Nock: estimated Nockchain tx fee in nicks; refines "You will receive" when set. */
+  confirmingNockchainFeeNicks?: bigint | null;
   /** Disables Confirm and shows a wallet-pending label (e.g. wagmi burn). */
   confirmSubmitting?: boolean;
 }
@@ -63,6 +67,8 @@ export default function ResultCard({
   flowDirection = "nock_to_base",
   confirmingAmountInNicks,
   nockchainNetworkFeeAmount,
+  nockchainNetworkFeeLoading = false,
+  confirmingNockchainFeeNicks,
   confirmSubmitting = false,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
@@ -87,10 +93,15 @@ export default function ResultCard({
   // Calculate bridge fee for confirming state
   // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
   // Note: BigInt division automatically truncates (rounds down)
+  const bridgeFeeChunks = (amountNicks: bigint): bigint =>
+    isBaseToNock
+      ? (amountNicks + 65535n) / 65536n
+      : amountNicks / 65536n;
+
   const calculateBridgeFee = (): string => {
     if (amountInNicksForFees === null) return "0 NOCK";
     const bridgeFeeNicks =
-      (amountInNicksForFees / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+      bridgeFeeChunks(amountInNicksForFees) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
@@ -99,9 +110,24 @@ export default function ResultCard({
   const calculateAmountAfterBridgeFee = (): string => {
     if (amountInNicksForFees === null) return totalNock;
     const bridgeFeeNicks =
-      (amountInNicksForFees / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+      bridgeFeeChunks(amountInNicksForFees) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const amountAfterFee = amountInNicksForFees - bridgeFeeNicks;
     const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
+    return `${formatNOCK(amountNock)} NOCK`;
+  };
+
+  const calculateYouWillReceiveConfirming = (): string => {
+    if (amountInNicksForFees === null) return totalNock;
+    const bridgeFeeNicks =
+      bridgeFeeChunks(amountInNicksForFees) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const afterBridge = amountInNicksForFees - bridgeFeeNicks;
+    const afterNockTx =
+      isBaseToNock &&
+      confirmingNockchainFeeNicks !== undefined &&
+      confirmingNockchainFeeNicks !== null
+        ? afterBridge - confirmingNockchainFeeNicks
+        : afterBridge;
+    const amountNock = Number(afterNockTx) / NOCK_TO_NICKS;
     return `${formatNOCK(amountNock)} NOCK`;
   };
 
@@ -591,21 +617,24 @@ export default function ResultCard({
                   letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
               >
-                Nockchain network fee
+                {isBaseToNock
+                  ? "Nockchain network fee (est.)"
+                  : "Nockchain network fee"}
               </span>
               <span
                 style={{
                   color: theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
                   fontSize: isMobile ? 14 : 15,
-                  fontStyle: "normal",
+                  fontStyle: nockchainNetworkFeeLoading ? "italic" : "normal",
                   fontWeight: 500,
                   lineHeight: "22px",
                   letterSpacing: isMobile ? 0.14 : 0.15,
                   opacity: 0.5,
+                  cursor: nockchainNetworkFeeLoading ? "wait" : undefined,
                 }}
               >
-                {nockchainNetworkFeeAmount}
+                {nockchainNetworkFeeLoading ? "Loading…" : nockchainNetworkFeeAmount}
               </span>
             </div>
           )}
@@ -630,7 +659,9 @@ export default function ResultCard({
                 letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
-              You will receive
+              {isConfirming && isBaseToNock
+                ? "You will receive (est.)"
+                : "You will receive"}
             </span>
             <div
               style={{
@@ -644,13 +675,33 @@ export default function ResultCard({
                   color: theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
                   fontSize: isMobile ? 14 : 15,
-                  fontStyle: "normal",
+                  fontStyle:
+                    isConfirming &&
+                    isBaseToNock &&
+                    nockchainNetworkFeeLoading &&
+                    confirmingNockchainFeeNicks === null
+                      ? "italic"
+                      : "normal",
                   fontWeight: 500,
                   lineHeight: "22px",
                   letterSpacing: isMobile ? 0.14 : 0.15,
+                  opacity:
+                    isConfirming &&
+                    isBaseToNock &&
+                    nockchainNetworkFeeLoading &&
+                    confirmingNockchainFeeNicks === null
+                      ? 0.65
+                      : 1,
+                  cursor:
+                    isConfirming &&
+                    isBaseToNock &&
+                    nockchainNetworkFeeLoading &&
+                    confirmingNockchainFeeNicks === null
+                      ? "wait"
+                      : undefined,
                 }}
               >
-                {isConfirming ? calculateAmountAfterBridgeFee() : totalNock}
+                {isConfirming ? calculateYouWillReceiveConfirming() : totalNock}
               </span>
               {totalUsd && (
                 <span

@@ -166,7 +166,8 @@ export default function SwapCard({
       return;
     }
 
-    if (nockAmount < MIN_BRIDGE_AMOUNT_NOCK) {
+    const wholeNockAmount = Math.floor(nockAmount);
+    if (wholeNockAmount < MIN_BRIDGE_AMOUNT_NOCK) {
       setShowAmountError(true);
       if (onSwapError) {
         onSwapError(
@@ -178,7 +179,7 @@ export default function SwapCard({
 
     if (onPrepareBurnSuccess) {
       onPrepareBurnSuccess({
-        amountNock: nockAmount,
+        amountNock: wholeNockAmount,
         destinationNockAddress: receivingAddress.trim(),
       });
     }

@@ -21,7 +21,11 @@ export function useNockBurn() {
     }
     assertValidNockTokenAddress(nockAddress);
 
-    const amount = nockAmountToTokenUnits(amountNock);
+    const wholeNock = Math.floor(amountNock);
+    if (wholeNock <= 0) {
+      throw new Error("Burn amount must be at least 1 whole NOCK");
+    }
+    const amount = nockAmountToTokenUnits(wholeNock);
     // update this to real lock root
     const lockRoot = burnLockRootFromEnv();
 

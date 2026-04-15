@@ -39,7 +39,7 @@ export function useNockBurnGasEstimate(amountNock: number | null): {
       return undefined;
     }
     try {
-      return nockAmountToTokenUnits(amountNock);
+      return nockAmountToTokenUnits(Math.floor(amountNock));
     } catch {
       return undefined;
     }

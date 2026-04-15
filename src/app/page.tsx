@@ -4,10 +4,16 @@ import { useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
-import { ASSETS, PROTOCOL_FEE_DISPLAY, PROTOCOL_FEE_NICKS_PER_NOCK } from "@/lib/constants";
+import {
+  ASSETS,
+  PROTOCOL_FEE_DISPLAY,
+  PROTOCOL_FEE_NICKS_PER_NOCK,
+  NICKS_PER_NOCK,
+} from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { useNockBurn } from "@/hooks/useNockBurn";
 import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
+import { useBaseToNockNockchainFeeEstimate } from "@/hooks/useBaseToNockNockchainFeeEstimate";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
 import { getSwapCardTheme } from "@/lib/theme";
@@ -37,6 +43,16 @@ export default function Home() {
     resultState.type === "confirming_burn" ? resultState.amountNock : null;
   const { networkFeeDisplay: burnNetworkFeeDisplay } =
     useNockBurnGasEstimate(burnGasAmountNock);
+  const {
+    display: nockchainNetworkFeeDisplay,
+    feeNicks: nockchainFeeNicksEstimate,
+    loading: nockchainNetworkFeeLoading,
+  } = useBaseToNockNockchainFeeEstimate(
+    resultState.type === "confirming_burn" ? resultState.amountNock : null,
+    resultState.type === "confirming_burn"
+      ? resultState.destinationNockAddress
+      : null
+  );
 
   const handlePrepareSuccess = (preview: TransactionPreview) => {
     setResultState({ type: "confirming", preview });
@@ -339,10 +355,12 @@ export default function Home() {
                 onHomeClick={handleCancel}
                 onConfirm={handleConfirmBurn}
                 bridgeStatus={bridgeStatus}
-                confirmingAmountInNicks={BigInt(
-                  Math.floor(resultState.amountNock * NOCK_TO_NICKS)
-                )}
-                nockchainNetworkFeeAmount="0 NOCK"
+                confirmingAmountInNicks={
+                  BigInt(Math.floor(resultState.amountNock)) * NICKS_PER_NOCK
+                }
+                nockchainNetworkFeeAmount={nockchainNetworkFeeDisplay}
+                nockchainNetworkFeeLoading={nockchainNetworkFeeLoading}
+                confirmingNockchainFeeNicks={nockchainFeeNicksEstimate}
                 confirmSubmitting={isBurnPending}
               />
             ) : (
