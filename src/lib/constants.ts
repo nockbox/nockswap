@@ -1,6 +1,17 @@
-// Bridge fee: 195 nicks per 65536 nicks (~0.3%)
+// Bridge fee: 195 nicks per 65_536 nicks (1 NOCK). Slightly under 0.3%; integer nicks avoids float drift.
 export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
 export const PROTOCOL_FEE_DISPLAY = "0.3%";
+
+/** 1 NOCK = 2^16 nicks. Fee uses whole-nock chunks of this size with PROTOCOL_FEE_NICKS_PER_NOCK. */
+export const NICKS_PER_NOCK = 65_536n;
+
+/** Floor nicks to a whole-NOCK boundary so bridge fee math matches on-chain integer semantics. */
+export function toWholeNockNicks(nicks: bigint): bigint {
+  if (nicks <= 0n) {
+    return 0n;
+  }
+  return (nicks / NICKS_PER_NOCK) * NICKS_PER_NOCK;
+}
 
 export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
 
