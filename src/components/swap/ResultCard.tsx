@@ -26,6 +26,7 @@ interface ResultCardProps {
   fullReceivingAddress?: string;
   transactionId?: string;
   fullTransactionId?: string;
+  transactionUrl?: string;
   onHomeClick?: () => void;
   onConfirm?: () => Promise<void>;
   preview?: TransactionPreview;
@@ -45,6 +46,7 @@ export default function ResultCard({
   fullReceivingAddress,
   transactionId = "",
   fullTransactionId,
+  transactionUrl,
   onHomeClick,
   onConfirm,
   preview,
@@ -95,8 +97,9 @@ export default function ResultCard({
 
   const handleOpenTransaction = () => {
     const txId = fullTransactionId || transactionId;
-    if (txId) {
-      window.open(`https://nockscan.net/tx/${txId}`, "_blank");
+    if (txId || transactionUrl) {
+      const url = transactionUrl || `https://nockscan.net/tx/${txId}`;
+      window.open(url, "_blank");
     }
   };
 

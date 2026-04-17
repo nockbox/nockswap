@@ -16,7 +16,6 @@ import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
 import { useBaseToNockNockchainFeeEstimate } from "@/hooks/useBaseToNockNockchainFeeEstimate";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
-import { getSwapCardTheme } from "@/lib/theme";
 import { isEvmWalletUserRejection } from "@/lib/evmWalletErrors";
 import { transactionExplorerUrl } from "@/lib/blockExplorer";
 import { useChainId } from "wagmi";
@@ -31,8 +30,24 @@ type ResultState =
     }
   | { type: "success"; result: BridgeResult }
   | { type: "error"; message: string }
-  | { type: "burn_submitted"; txHash: string }
-  | { type: "burn_cancelled" };
+  | {
+      type: "base_to_nock_success";
+      txHash: string;
+      amountNock: number;
+      destinationNockAddress: string;
+      burnNetworkFeeDisplay: string;
+      nockchainNetworkFeeDisplay: string;
+      nockchainFeeNicks: bigint | null;
+    }
+  | {
+      type: "base_to_nock_failed";
+      message: string;
+      amountNock: number;
+      destinationNockAddress: string;
+      burnNetworkFeeDisplay: string;
+      nockchainNetworkFeeDisplay: string;
+      nockchainFeeNicks: bigint | null;
+    };
 
 export default function Home() {
   const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
@@ -94,17 +109,37 @@ export default function Home() {
 
   const handleConfirmBurn = async () => {
     if (resultState.type !== "confirming_burn") return;
+    const { amountNock, destinationNockAddress } = resultState;
+    const sharedBurnResultData = {
+      amountNock,
+      destinationNockAddress,
+      burnNetworkFeeDisplay,
+      nockchainNetworkFeeDisplay,
+      nockchainFeeNicks: nockchainFeeNicksEstimate,
+    };
     try {
-      const txHash = await burnNock(resultState.amountNock);
-      setResultState({ type: "burn_submitted", txHash });
+      const txHash = await burnNock(amountNock);
+      setResultState({
+        type: "base_to_nock_success",
+        txHash,
+        ...sharedBurnResultData,
+      });
     } catch (err) {
       if (isEvmWalletUserRejection(err)) {
-        setResultState({ type: "burn_cancelled" });
+        setResultState({
+          type: "base_to_nock_failed",
+          message: "Transaction cancelled",
+          ...sharedBurnResultData,
+        });
         return;
       }
       const errorMessage =
         err instanceof Error ? err.message : "Burn transaction failed";
-      setResultState({ type: "error", message: errorMessage });
+      setResultState({
+        type: "base_to_nock_failed",
+        message: errorMessage,
+        ...sharedBurnResultData,
+      });
     }
   };
 
@@ -119,14 +154,24 @@ export default function Home() {
     return Number(amountAfterFee) / NOCK_TO_NICKS;
   };
 
+  const calculateBaseToNockAmountAfterFees = (
+    amountNock: number,
+    nockchainFeeNicks: bigint | null
+  ): number => {
+    const amountInNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
+    const bridgeFeeNicks =
+      ((amountInNicks + 65535n) / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const amountAfterBridgeFee = amountInNicks - bridgeFeeNicks;
+    const amountAfterAllFees =
+      nockchainFeeNicks !== null
+        ? amountAfterBridgeFee - nockchainFeeNicks
+        : amountAfterBridgeFee;
+    return Number(amountAfterAllFees) / NOCK_TO_NICKS;
+  };
+
   return (
     <PageLayout>
       {({ isDarkMode, theme }) => {
-        const cardTheme = getSwapCardTheme(isDarkMode);
-        const burnSubmittedTxUrl =
-          resultState.type === "burn_submitted"
-            ? transactionExplorerUrl(chainId, resultState.txHash)
-            : null;
         return (
         <>
           {/* Title section */}
@@ -186,140 +231,47 @@ export default function Home() {
                 prepareTransaction={prepareTransaction}
                 bridgeStatus={bridgeStatus}
               />
-            ) : resultState.type === "burn_submitted" ? (
-              <div
-                style={{
-                  marginTop: 0,
-                  width: "100%",
-                  maxWidth: 480,
-                  padding: 20,
-                  boxSizing: "border-box",
-                  borderRadius: 16,
-                  border: `1px solid ${cardTheme.cardBorder}`,
-                  background: cardTheme.cardBg,
-                }}
-              >
-                <p
-                  style={{
-                    margin: "0 0 12px",
-                    fontFamily: "var(--font-lora), serif",
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: cardTheme.textPrimary,
-                  }}
-                >
-                  Burn submitted
-                </p>
-                <p
-                  style={{
-                    margin: "0 0 8px",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 13,
-                    color: cardTheme.textPrimary,
-                    opacity: 0.65,
-                  }}
-                >
-                  Transaction hash
-                </p>
-                <p
-                  style={{
-                    margin: "0 0 20px",
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    wordBreak: "break-all",
-                    color: cardTheme.textPrimary,
-                  }}
-                >
-                  {burnSubmittedTxUrl ? (
-                    <a
-                      href={burnSubmittedTxUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: "inherit",
-                        textDecoration: "underline",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {resultState.txHash}
-                    </a>
-                  ) : (
-                    resultState.txHash
-                  )}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleHomeClick}
-                  style={{
-                    width: "100%",
-                    height: 48,
-                    borderRadius: 8,
-                    border: "none",
-                    background: "#ffc413",
-                    cursor: "pointer",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 16,
-                    fontWeight: 500,
-                  }}
-                >
-                  Back to swap
-                </button>
-              </div>
-            ) : resultState.type === "burn_cancelled" ? (
-              <div
-                style={{
-                  marginTop: 0,
-                  width: "100%",
-                  maxWidth: 480,
-                  padding: 20,
-                  boxSizing: "border-box",
-                  borderRadius: 16,
-                  border: `1px solid ${cardTheme.cardBorder}`,
-                  background: cardTheme.cardBg,
-                }}
-              >
-                <p
-                  style={{
-                    margin: "0 0 8px",
-                    fontFamily: "var(--font-lora), serif",
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: cardTheme.textPrimary,
-                  }}
-                >
-                  Transaction cancelled
-                </p>
-                <p
-                  style={{
-                    margin: "0 0 20px",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 14,
-                    lineHeight: "22px",
-                    color: cardTheme.textPrimary,
-                    opacity: 0.65,
-                  }}
-                >
-                  You closed the wallet without signing. Nothing was submitted
-                  on-chain.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleHomeClick}
-                  style={{
-                    width: "100%",
-                    height: 48,
-                    borderRadius: 8,
-                    border: "none",
-                    background: "#ffc413",
-                    cursor: "pointer",
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 16,
-                    fontWeight: 500,
-                  }}
-                >
-                  Back to swap
-                </button>
-              </div>
+            ) : resultState.type === "base_to_nock_success" ||
+              resultState.type === "base_to_nock_failed" ? (
+              <ResultCard
+                isDarkMode={isDarkMode}
+                status={
+                  resultState.type === "base_to_nock_success" ? "success" : "failed"
+                }
+                flowDirection="base_to_nock"
+                errorMessage={
+                  resultState.type === "base_to_nock_failed"
+                    ? resultState.message
+                    : undefined
+                }
+                networkFeePercent={PROTOCOL_FEE_DISPLAY}
+                networkFeeAmount={resultState.burnNetworkFeeDisplay}
+                nockchainNetworkFeeAmount={
+                  resultState.nockchainNetworkFeeDisplay !== "—"
+                    ? resultState.nockchainNetworkFeeDisplay
+                    : undefined
+                }
+                totalNock={`${formatNOCK(calculateBaseToNockAmountAfterFees(resultState.amountNock, resultState.nockchainFeeNicks))} NOCK`}
+                totalUsd=""
+                receivingAddress={truncateAddress(resultState.destinationNockAddress)}
+                fullReceivingAddress={resultState.destinationNockAddress}
+                transactionId={
+                  resultState.type === "base_to_nock_success"
+                    ? truncateAddress(resultState.txHash, 5)
+                    : ""
+                }
+                fullTransactionId={
+                  resultState.type === "base_to_nock_success"
+                    ? resultState.txHash
+                    : ""
+                }
+                transactionUrl={
+                  resultState.type === "base_to_nock_success"
+                    ? (transactionExplorerUrl(chainId, resultState.txHash) ?? undefined)
+                    : undefined
+                }
+                onHomeClick={handleHomeClick}
+              />
             ) : resultState.type === "confirming" ? (
               <ResultCard
                 isDarkMode={isDarkMode}
