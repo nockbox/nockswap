@@ -51,7 +51,7 @@ export default function SwapCard({
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
   const [direction, setDirection] = useState<"nock_to_base" | "base_to_nock">(
-    "nock_to_base"
+    "base_to_nock"
   );
   const isNockchainToBase = direction === "nock_to_base";
   const [showAddressError, setShowAddressError] = useState(false);
