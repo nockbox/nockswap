@@ -28,6 +28,7 @@ import {
   burnLockRootForNockRecipient,
   getNockTokenAddress,
 } from "@/lib/nockToken";
+import { errorMessage } from "@/lib/errorMessage";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -155,10 +156,9 @@ export default function SwapCard({
         onPrepareSuccess(preview);
       }
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to prepare transaction";
+      const message = errorMessage(err, "Failed to prepare transaction");
       if (onSwapError) {
-        onSwapError(errorMessage);
+        onSwapError(message);
       }
     }
   };
@@ -200,10 +200,9 @@ export default function SwapCard({
           lockRoot,
         });
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to prepare burn";
+        const message = errorMessage(err, "Failed to prepare burn");
         if (onSwapError) {
-          onSwapError(errorMessage);
+          onSwapError(message);
         }
       } finally {
         setIsPreparingBurn(false);

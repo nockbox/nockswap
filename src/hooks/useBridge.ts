@@ -26,6 +26,9 @@ import {
 import { isEvmAddress } from "@/lib/validators";
 import { MIN_BRIDGE_AMOUNT_NOCK } from "@/lib/constants";
 import { getActiveBridgeConfig } from "@/lib/bridgeConfig";
+import { resolveNockchainConstants } from "@/lib/nockchainConstants";
+import { errorMessage } from "@/lib/errorMessage";
+import { resolveNockchainGrpcUrl } from "@/lib/nockchainGrpc";
 
 export type BridgeStatus =
   | "idle"
@@ -125,6 +128,7 @@ export function useBridge(): UseBridgeReturn {
 
   // Keep a ref to the grpc client to avoid recreating
   const grpcClientRef = useRef<unknown>(null);
+  const grpcClientEndpointRef = useRef<string | null>(null);
 
   // Store prepared transaction for confirmation step
   const preparedTxRef = useRef<PreparedTransaction | null>(null);
@@ -195,7 +199,7 @@ export function useBridge(): UseBridgeReturn {
         throw new Error("Wallet not connected");
       }
 
-      if (!grpcEndpoint) {
+      if (!resolveNockchainGrpcUrl(grpcEndpoint)) {
         throw new Error("gRPC endpoint not available");
       }
 
@@ -230,9 +234,20 @@ export function useBridge(): UseBridgeReturn {
           await wasm.default();
         }
 
+        const nockchainConstants = await resolveNockchainConstants(wasm);
+
+        const browserGrpcEndpoint = resolveNockchainGrpcUrl(grpcEndpoint);
+        if (!browserGrpcEndpoint) {
+          throw new Error("gRPC endpoint not available");
+        }
+
         // Create or reuse gRPC client
-        if (!grpcClientRef.current) {
-          grpcClientRef.current = new wasm.GrpcClient(grpcEndpoint);
+        if (
+          !grpcClientRef.current ||
+          grpcClientEndpointRef.current !== browserGrpcEndpoint
+        ) {
+          grpcClientRef.current = new wasm.GrpcClient(browserGrpcEndpoint);
+          grpcClientEndpointRef.current = browserGrpcEndpoint;
         }
         const grpcClient = grpcClientRef.current as InstanceType<
           typeof wasm.GrpcClient
@@ -249,7 +264,11 @@ export function useBridge(): UseBridgeReturn {
           { tag: "pkh", ...simplePkh },
           {
             tag: "tim" as const,
-            rel: { min: 100 as BlockHeight, max: null },
+            rel: {
+              min: nockchainConstants.blockchainConstants
+                .coinbase_timelock_min as BlockHeight,
+              max: null,
+            },
             abs: { min: null, max: null },
           },
         ];
@@ -290,7 +309,7 @@ export function useBridge(): UseBridgeReturn {
           throw new Error("No spendable notes found in wallet");
         }
 
-        const txEngineSettings = await currentTxEngineSettings(wasm);
+        const txEngineSettings = nockchainConstants.txEngineSettings;
         const feePerWord = BigInt(txEngineSettings.cost_per_word);
 
         // Sort notes by largest first
@@ -491,15 +510,12 @@ export function useBridge(): UseBridgeReturn {
         setStatus("confirming");
         return transactionPreview;
       } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : String(err) || "Failed to prepare transaction";
+        const message = errorMessage(err, "Failed to prepare transaction");
 
-        console.error("Prepare error:", message);
+        console.error("Prepare error:", err);
         setError(message);
         setStatus("error");
-        throw err;
+        throw new Error(message);
       }
     },
     [
@@ -599,9 +615,18 @@ export function useBridge(): UseBridgeReturn {
         "post-signing"
       );
 
+      const browserGrpcEndpoint = resolveNockchainGrpcUrl(grpcEndpoint);
+      if (!browserGrpcEndpoint) {
+        throw new Error("gRPC endpoint not available");
+      }
+
       // Get or create gRPC client
-      if (!grpcClientRef.current) {
-        grpcClientRef.current = new wasm.GrpcClient(grpcEndpoint!);
+      if (
+        !grpcClientRef.current ||
+        grpcClientEndpointRef.current !== browserGrpcEndpoint
+      ) {
+        grpcClientRef.current = new wasm.GrpcClient(browserGrpcEndpoint);
+        grpcClientEndpointRef.current = browserGrpcEndpoint;
       }
       const grpcClient = grpcClientRef.current as InstanceType<
         typeof wasm.GrpcClient
@@ -627,10 +652,7 @@ export function useBridge(): UseBridgeReturn {
 
       return bridgeResult;
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : String(err) || "Bridge transaction failed";
+      const message = errorMessage(err, "Bridge transaction failed");
 
       // Check if user cancelled
       const isCancellation =
@@ -643,10 +665,10 @@ export function useBridge(): UseBridgeReturn {
         return undefined;
       }
 
-      console.error("Bridge error:", message);
+      console.error("Bridge error:", err);
       setError(message);
       setStatus("error");
-      throw err;
+      throw new Error(message);
     }
   }, [status, signRawTx, grpcEndpoint]);
 
