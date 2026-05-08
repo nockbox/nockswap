@@ -3,10 +3,11 @@
 import { useState } from "react";
 import Image from "next/image";
 import { usePrice } from "@/hooks/usePrice";
-import { useAccount } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
+import { useBaseToNockReadiness } from "@/hooks/useBaseToNockReadiness";
 import {
   useBridge,
   TransactionPreview,
@@ -23,7 +24,10 @@ import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { parseAmount } from "@/lib/utils";
-import { getNockTokenAddress } from "@/lib/nockToken";
+import {
+  burnLockRootForNockRecipient,
+  getNockTokenAddress,
+} from "@/lib/nockToken";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -33,6 +37,7 @@ interface SwapCardProps {
   onPrepareBurnSuccess?: (payload: {
     amountNock: number;
     destinationNockAddress: string;
+    lockRoot: `0x${string}`;
   }) => void;
   prepareTransaction: (
     destinationAddress: string,
@@ -58,6 +63,7 @@ export default function SwapCard({
   const [showAmountError, setShowAmountError] = useState(false);
   const [flipDirectionHovered, setFlipDirectionHovered] = useState(false);
   const [flipDirectionPressed, setFlipDirectionPressed] = useState(false);
+  const [isPreparingBurn, setIsPreparingBurn] = useState(false);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
@@ -79,13 +85,18 @@ export default function SwapCard({
     handleAmountBlur,
     fromSecondary,
     toSecondary,
-  } = useSwapForm({ nockPrice });
+  } = useSwapForm({
+    nockPrice,
+    feeRounding: isNockchainToBase ? "floor" : "ceil",
+  });
 
   // Wallet connection
   const { isInstalled, isConnected, isConnecting, connect } = useWallet();
   const { address: evmAddress, isConnected: isEvmConnected, status: evmStatus } =
     useAccount();
+  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
   const { openConnectModal } = useConnectModal();
+  const baseToNockReadiness = useBaseToNockReadiness();
 
   const isEvmConnecting =
     evmStatus === "connecting" || evmStatus === "reconnecting";
@@ -152,7 +163,7 @@ export default function SwapCard({
     }
   };
 
-  const handleBurnToNockchain = () => {
+  const handleBurnToNockchain = async () => {
     if (isAddressValid === false || receivingAddress.trim().length === 0) {
       setShowAddressError(true);
       return;
@@ -178,10 +189,25 @@ export default function SwapCard({
     }
 
     if (onPrepareBurnSuccess) {
-      onPrepareBurnSuccess({
-        amountNock: wholeNockAmount,
-        destinationNockAddress: receivingAddress.trim(),
-      });
+      setIsPreparingBurn(true);
+      try {
+        const { lockRoot } = await burnLockRootForNockRecipient(
+          receivingAddress.trim()
+        );
+        onPrepareBurnSuccess({
+          amountNock: wholeNockAmount,
+          destinationNockAddress: receivingAddress.trim(),
+          lockRoot,
+        });
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to prepare burn";
+        if (onSwapError) {
+          onSwapError(errorMessage);
+        }
+      } finally {
+        setIsPreparingBurn(false);
+      }
     }
   };
 
@@ -1000,12 +1026,36 @@ export default function SwapCard({
           } else if (!burnFlowEnabled) {
             buttonText = "Base -> Nockchain Coming Soon";
             isDisabled = true;
+          } else if (baseToNockReadiness.wrongNetwork) {
+            buttonText = `Switch to ${baseToNockReadiness.expectedChainName}`;
+            buttonAction = () => {
+              switchChainAsync({
+                chainId: baseToNockReadiness.expectedChainId,
+              }).catch((err) => {
+                if (onSwapError) {
+                  onSwapError(
+                    err instanceof Error ? err.message : "Network switch failed"
+                  );
+                }
+              });
+            };
+            isDisabled = isSwitchingChain;
+            isLoading = isSwitchingChain;
+          } else if (baseToNockReadiness.loading) {
+            buttonText = "Checking bridge...";
+            isDisabled = true;
+            isLoading = true;
+          } else if (!baseToNockReadiness.ready) {
+            buttonText = "Bridge unavailable";
+            isDisabled = true;
           } else {
-            buttonText = "Bridge Nock";
+            buttonText = isPreparingBurn ? "Preparing..." : "Bridge Nock";
             buttonAction = handleBurnToNockchain;
             const hasAmount = fromAmount.trim().length > 0;
             const hasAddress = receivingAddress.trim().length > 0;
-            isDisabled = !hasAmount || !hasAddress || isBelowMinimum;
+            isDisabled =
+              !hasAmount || !hasAddress || isBelowMinimum || isPreparingBurn;
+            isLoading = isPreparingBurn;
           }
         } else {
           // Bridge status takes priority when active

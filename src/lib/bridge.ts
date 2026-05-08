@@ -19,15 +19,13 @@ import type {
 } from "@nockbox/iris-wasm";
 import { base58 } from "@scure/base";
 import { isEvmAddress } from "./validators";
+import { MIN_BRIDGE_AMOUNT_NOCK } from "./constants";
 import {
-  ZORP_BRIDGE_THRESHOLD,
-  ZORP_BRIDGE_ADDRESSES,
-  MIN_BRIDGE_AMOUNT_NOCK,
-} from "./constants";
+  getActiveBridgeConfig,
+  isBridgeConfigComplete,
+} from "./bridgeConfig";
+import { resolveTxEngineSettings } from "./nockchainConstants";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
-
-// Re-export for convenience
-export { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES };
 
 // Goldilocks prime: 2^64 - 2^32 + 1
 export const GOLDILOCKS_PRIME = 2n ** 64n - 2n ** 32n + 1n;
@@ -37,15 +35,17 @@ export const BRIDGE_NOTE_KEY = "bridge";
 
 // Helper to check if bridge is configured
 export const isBridgeConfigured = (): boolean => {
-  return (
-    ZORP_BRIDGE_ADDRESSES.length > 0 &&
-    ZORP_BRIDGE_THRESHOLD > 0 &&
-    ZORP_BRIDGE_THRESHOLD <= ZORP_BRIDGE_ADDRESSES.length
-  );
+  return isBridgeConfigComplete();
 };
 
-// Default fee rate: 0.5 NOCK per word (in nicks)
-export const DEFAULT_FEE_PER_WORD = 32768n;
+export async function currentTxEngineSettings(
+  wasm: typeof import("@nockbox/iris-wasm"),
+  costPerWord?: bigint
+): Promise<TxEngineSettings> {
+  return resolveTxEngineSettings(wasm, {
+    costPerWordOverride: costPerWord,
+  });
+}
 
 /**
  * Convert an EVM address to 3 belts (field elements over Goldilocks prime)
@@ -240,6 +240,7 @@ function parseDigestString(value: string, field: string): Digest {
 export async function buildBridgeTransaction(
   params: BridgeTransactionParams
 ): Promise<BridgeTransactionResult> {
+  const bridgeConfig = getActiveBridgeConfig();
   // Check bridge is configured
   if (!isBridgeConfigured()) {
     throw new Error("Bridge not configured");
@@ -266,8 +267,8 @@ export async function buildBridgeTransaction(
 
   // Derive lock root from multisig PKH spend condition
   const bridgePkh = wasm.pkhNew(
-    BigInt(ZORP_BRIDGE_THRESHOLD),
-    ZORP_BRIDGE_ADDRESSES.map((addr) =>
+    BigInt(bridgeConfig.bridgeThreshold),
+    bridgeConfig.bridgeSignerPkhs.map((addr) =>
       parseDigestString(addr, "bridge address")
     )
   );
@@ -277,13 +278,7 @@ export async function buildBridgeTransaction(
   const refundLock = wasm.spendConditionNewPkh(refundPkh);
 
   // Build transaction
-  const txEngineSettings: TxEngineSettings = {
-    tx_engine_version: 1,
-    tx_engine_patch: 0,
-    min_fee: "256" as Nicks,
-    cost_per_word: String(params.feeOverride ?? DEFAULT_FEE_PER_WORD) as Nicks,
-    witness_word_div: 1,
-  };
+  const txEngineSettings = await currentTxEngineSettings(wasm, params.feeOverride);
   const builder = new wasm.TxBuilder(txEngineSettings);
   let remainingGift = params.amountInNicks;
 
@@ -389,7 +384,7 @@ export async function validateBridgeTransaction(
     const outputs = wasm.rawTxOutputs(
       rawTx,
       0,
-      wasm.txEngineSettingsV1BythosDefault()
+      await currentTxEngineSettings(wasm)
     );
 
     if (outputs.length === 0) {

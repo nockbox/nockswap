@@ -27,6 +27,7 @@ type ResultState =
       type: "confirming_burn";
       amountNock: number;
       destinationNockAddress: string;
+      lockRoot: `0x${string}`;
     }
   | { type: "success"; result: BridgeResult }
   | { type: "error"; message: string }
@@ -57,7 +58,13 @@ export default function Home() {
   const burnGasAmountNock =
     resultState.type === "confirming_burn" ? resultState.amountNock : null;
   const { networkFeeDisplay: burnNetworkFeeDisplay } =
-    useNockBurnGasEstimate(burnGasAmountNock);
+    useNockBurnGasEstimate(
+      burnGasAmountNock,
+      resultState.type === "confirming_burn"
+        ? resultState.destinationNockAddress
+        : null,
+      resultState.type === "confirming_burn" ? resultState.lockRoot : undefined
+    );
   const {
     display: nockchainNetworkFeeDisplay,
     feeNicks: nockchainFeeNicksEstimate,
@@ -80,6 +87,7 @@ export default function Home() {
   const handlePrepareBurnSuccess = (payload: {
     amountNock: number;
     destinationNockAddress: string;
+    lockRoot: `0x${string}`;
   }) => {
     setResultState({ type: "confirming_burn", ...payload });
   };
@@ -109,7 +117,7 @@ export default function Home() {
 
   const handleConfirmBurn = async () => {
     if (resultState.type !== "confirming_burn") return;
-    const { amountNock, destinationNockAddress } = resultState;
+    const { amountNock, destinationNockAddress, lockRoot } = resultState;
     const sharedBurnResultData = {
       amountNock,
       destinationNockAddress,
@@ -118,7 +126,7 @@ export default function Home() {
       nockchainFeeNicks: nockchainFeeNicksEstimate,
     };
     try {
-      const txHash = await burnNock(amountNock);
+      const txHash = await burnNock(amountNock, destinationNockAddress, lockRoot);
       setResultState({
         type: "base_to_nock_success",
         txHash,
@@ -146,10 +154,10 @@ export default function Home() {
   // Convert nicks to NOCK
   const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
 
-  // Calculate amount after bridge fee deduction (~0.3%)
-  // Formula: roundDown(amountInNicks / 65536) * PROTOCOL_FEE_NICKS_PER_NOCK
+  // Nockchain -> Base currently floors to whole NOCK chunks.
   const calculateAmountAfterBridgeFee = (amountInNicks: bigint): number => {
-    const bridgeFeeNicks = (amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const bridgeFeeNicks =
+      (amountInNicks / NICKS_PER_NOCK) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const amountAfterFee = amountInNicks - bridgeFeeNicks;
     return Number(amountAfterFee) / NOCK_TO_NICKS;
   };
@@ -160,7 +168,8 @@ export default function Home() {
   ): number => {
     const amountInNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
     const bridgeFeeNicks =
-      ((amountInNicks + 65535n) / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+      ((amountInNicks + NICKS_PER_NOCK - 1n) / NICKS_PER_NOCK) *
+      PROTOCOL_FEE_NICKS_PER_NOCK;
     const amountAfterBridgeFee = amountInNicks - bridgeFeeNicks;
     const amountAfterAllFees =
       nockchainFeeNicks !== null

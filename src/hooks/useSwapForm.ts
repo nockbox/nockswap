@@ -9,10 +9,12 @@ import {
   formatWithCommas,
   applyFee,
   reverseFee,
+  type BridgeFeeRounding,
 } from "@/lib/utils";
 
 interface UseSwapFormOptions {
   nockPrice: number;
+  feeRounding?: BridgeFeeRounding;
 }
 
 interface UseSwapFormReturn {
@@ -40,6 +42,7 @@ interface UseSwapFormReturn {
 
 export function useSwapForm({
   nockPrice,
+  feeRounding = "floor",
 }: UseSwapFormOptions): UseSwapFormReturn {
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
@@ -73,14 +76,14 @@ export function useSwapForm({
       if (numValue > 0) {
         // Convert to NOCK, apply fee, convert to "To" display mode
         const fromNockValue = toNock(numValue, isFromUsdMode);
-        const toNockValue = applyFee(fromNockValue);
+        const toNockValue = applyFee(fromNockValue, feeRounding);
         const toDisplayValue = fromNock(toNockValue, isToUsdMode);
         setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
       } else {
         setToAmount("");
       }
     },
-    [isFromUsdMode, isToUsdMode, toNock, fromNock]
+    [isFromUsdMode, isToUsdMode, toNock, fromNock, feeRounding]
   );
 
   // Handle To amount change - calculate From amount
@@ -113,7 +116,7 @@ export function useSwapForm({
         const nockValue = calcNOCK(currentValue, nockPrice);
         setFromAmount(formatWithCommas(nockValue.toFixed(2)));
         // Recalculate "To" amount with new "From" mode
-        const toNockValue = applyFee(nockValue);
+        const toNockValue = applyFee(nockValue, feeRounding);
         const toDisplayValue = fromNock(toNockValue, isToUsdMode);
         setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
       } else {
@@ -121,13 +124,20 @@ export function useSwapForm({
         const usdValue = currentValue * nockPrice;
         setFromAmount(formatWithCommas(usdValue.toFixed(2)));
         // Recalculate To amount with new From mode
-        const toNockValue = applyFee(currentValue);
+        const toNockValue = applyFee(currentValue, feeRounding);
         const toDisplayValue = fromNock(toNockValue, isToUsdMode);
         setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
       }
     }
     setIsFromUsdMode(!isFromUsdMode);
-  }, [fromAmount, nockPrice, isFromUsdMode, isToUsdMode, fromNock]);
+  }, [
+    fromAmount,
+    nockPrice,
+    isFromUsdMode,
+    isToUsdMode,
+    fromNock,
+    feeRounding,
+  ]);
 
   const handleToToggle = useCallback(() => {
     const currentValue = parseAmount(toAmount);

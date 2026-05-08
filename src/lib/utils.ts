@@ -3,6 +3,8 @@ import { twMerge } from "tailwind-merge";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { PROTOCOL_FEE_NICKS_PER_NOCK } from "@/lib/constants";
 
+export type BridgeFeeRounding = "floor" | "ceil";
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -79,15 +81,20 @@ export function truncateAddress(address: string, chars: number = 6): string {
 
 /**
  * Apply bridge fee to an amount
- * floor(amountInNicks / 65536) * 195 nicks
+ * floor/ceil(amountInNicks / 65536) * 195 nicks
  * @param amountNock - The amount in NOCK before fee
  */
-export function applyFee(amountNock: number): number {
+export function applyFee(
+  amountNock: number,
+  rounding: BridgeFeeRounding = "floor"
+): number {
   // Convert to nicks, calculate fee, convert back to NOCK
   const amountInNicks = Math.floor(amountNock * NOCK_TO_NICKS);
-  const feeInNicks =
-    Math.floor(amountInNicks / NOCK_TO_NICKS) *
-    Number(PROTOCOL_FEE_NICKS_PER_NOCK);
+  const wholeNockChunks =
+    rounding === "ceil"
+      ? Math.ceil(amountInNicks / NOCK_TO_NICKS)
+      : Math.floor(amountInNicks / NOCK_TO_NICKS);
+  const feeInNicks = wholeNockChunks * Number(PROTOCOL_FEE_NICKS_PER_NOCK);
   const amountAfterFeeNicks = amountInNicks - feeInNicks;
   return amountAfterFeeNicks / NOCK_TO_NICKS;
 }

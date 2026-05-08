@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   ASSETS,
+  NICKS_PER_NOCK,
   PROTOCOL_FEE_DISPLAY,
   PROTOCOL_FEE_NICKS_PER_NOCK,
 } from "@/lib/constants";
@@ -92,13 +93,14 @@ export default function ResultCard({
     preview?.amountInNicks ??
     (confirmingAmountInNicks !== undefined ? confirmingAmountInNicks : null);
 
-  // Calculate bridge fee for confirming state
-  // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
-  // Note: BigInt division automatically truncates (rounds down)
   const bridgeFeeChunks = (amountNicks: bigint): bigint =>
     isBaseToNock
-      ? (amountNicks + 65535n) / 65536n
-      : amountNicks / 65536n;
+      ? (amountNicks + NICKS_PER_NOCK - 1n) / NICKS_PER_NOCK
+      : amountNicks / NICKS_PER_NOCK;
+  const baseToNockEstimateUnavailable =
+    isBaseToNock &&
+    nockchainNetworkFeeAmount === "Unavailable" &&
+    confirmingNockchainFeeNicks === null;
 
   const calculateBridgeFee = (): string => {
     if (amountInNicksForFees === null) return "0 NOCK";
@@ -108,17 +110,17 @@ export default function ResultCard({
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
 
-  // Calculate amount after bridge fee deduction
-  const calculateAmountAfterBridgeFee = (): string => {
-    if (amountInNicksForFees === null) return totalNock;
-    const bridgeFeeNicks =
-      bridgeFeeChunks(amountInNicksForFees) * PROTOCOL_FEE_NICKS_PER_NOCK;
-    const amountAfterFee = amountInNicksForFees - bridgeFeeNicks;
-    const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
-    return `${formatNOCK(amountNock)} NOCK`;
-  };
-
   const calculateYouWillReceiveConfirming = (): string => {
+    if (
+      isBaseToNock &&
+      nockchainNetworkFeeLoading &&
+      confirmingNockchainFeeNicks === null
+    ) {
+      return "Loading...";
+    }
+    if (baseToNockEstimateUnavailable) {
+      return "Unavailable";
+    }
     if (amountInNicksForFees === null) return totalNock;
     const bridgeFeeNicks =
       bridgeFeeChunks(amountInNicksForFees) * PROTOCOL_FEE_NICKS_PER_NOCK;
@@ -621,7 +623,7 @@ export default function ResultCard({
                 }}
               >
                 {isBaseToNock
-                  ? "Nockchain network fee (est.)"
+                  ? "Nockchain network fee (best effort)"
                   : "Nockchain network fee"}
               </span>
               <span
@@ -662,8 +664,8 @@ export default function ResultCard({
                 letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
-              {isConfirming && isBaseToNock
-                ? "You will receive (est.)"
+              {isBaseToNock
+                ? "You will receive (best effort)"
                 : "You will receive"}
             </span>
             <div
@@ -704,7 +706,11 @@ export default function ResultCard({
                       : undefined,
                 }}
               >
-                {isConfirming ? calculateYouWillReceiveConfirming() : totalNock}
+                {isConfirming
+                  ? calculateYouWillReceiveConfirming()
+                  : baseToNockEstimateUnavailable
+                  ? "Unavailable"
+                  : totalNock}
               </span>
               {totalUsd && (
                 <span
@@ -762,6 +768,24 @@ export default function ResultCard({
               >
                 100 blocks
               </span>
+            </div>
+          )}
+
+          {isBaseToNock && (
+            <div
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 12,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "16px",
+                letterSpacing: 0,
+                opacity: 0.55,
+              }}
+            >
+              Estimate excludes inputs already reserved by the sequencer; payout
+              may wait for safe liquidity.
             </div>
           )}
         </div>

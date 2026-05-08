@@ -13,21 +13,19 @@ import type {
   PbCom2Note,
   PbCom2RawTransaction,
   SpendCondition,
-  TxEngineSettings,
 } from "@nockbox/iris-wasm";
 import {
-  ZORP_BRIDGE_THRESHOLD,
-  ZORP_BRIDGE_ADDRESSES,
   isBridgeConfigured as checkBridgeConfigured,
   BRIDGE_NOTE_KEY,
-  DEFAULT_FEE_PER_WORD,
+  currentTxEngineSettings,
   evmAddressToBelts,
   verifyBeltEncoding,
   buildBridgeNoun,
   assertValidBridgeTransaction,
 } from "@/lib/bridge";
 import { isEvmAddress } from "@/lib/validators";
-import { MIN_BRIDGE_AMOUNT_NOCK, ZORP_BRIDGE_LOCK_ROOT } from "@/lib/constants";
+import { MIN_BRIDGE_AMOUNT_NOCK } from "@/lib/constants";
+import { getActiveBridgeConfig } from "@/lib/bridgeConfig";
 
 export type BridgeStatus =
   | "idle"
@@ -292,6 +290,9 @@ export function useBridge(): UseBridgeReturn {
           throw new Error("No spendable notes found in wallet");
         }
 
+        const txEngineSettings = await currentTxEngineSettings(wasm);
+        const feePerWord = BigInt(txEngineSettings.cost_per_word);
+
         // Sort notes by largest first
         const noteIndices = userNotes.map((_, i) => i);
         noteIndices.sort((a, b) =>
@@ -309,7 +310,7 @@ export function useBridge(): UseBridgeReturn {
             BigInt(numNotes) * wordsPerInput +
             numOutputs * wordsPerOutput;
           const safeWords = (totalWords * 110n) / 100n;
-          return safeWords * DEFAULT_FEE_PER_WORD;
+          return safeWords * feePerWord;
         };
 
         // Calculate total available balance
@@ -351,26 +352,20 @@ export function useBridge(): UseBridgeReturn {
         }
 
         // Build transaction
-        const txEngineSettings: TxEngineSettings = {
-          tx_engine_version: 1 as const,
-          tx_engine_patch: 0,
-          min_fee: "256" as Nicks,
-          cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
-          witness_word_div: 1,
-        };
         const builder = new wasm.TxBuilder(txEngineSettings);
 
         // Verify bridge lock root configuration once before building seeds
         {
+          const bridgeConfig = getActiveBridgeConfig();
           const testBridgePkh = wasm.pkhNew(
-            BigInt(ZORP_BRIDGE_THRESHOLD),
-            ZORP_BRIDGE_ADDRESSES.map((a) =>
+            BigInt(bridgeConfig.bridgeThreshold),
+            bridgeConfig.bridgeSignerPkhs.map((a) =>
               parseDigestString(a, "bridge address")
             )
           );
           const testSpendCondition = wasm.spendConditionNewPkh(testBridgePkh);
           const testLockRoot = wasm.lockHash(testSpendCondition);
-          if (testLockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
+          if (testLockRoot !== bridgeConfig.bridgeLockRoot) {
             throw new Error(
               `Bridge address mismatch. Check bridge configuration.`
             );
@@ -415,9 +410,10 @@ export function useBridge(): UseBridgeReturn {
             ];
 
             // Create fresh lock root
+            const bridgeConfig = getActiveBridgeConfig();
             const freshBridgePkh = wasm.pkhNew(
-              BigInt(ZORP_BRIDGE_THRESHOLD),
-              ZORP_BRIDGE_ADDRESSES.map((a) =>
+              BigInt(bridgeConfig.bridgeThreshold),
+              bridgeConfig.bridgeSignerPkhs.map((a) =>
                 parseDigestString(a, "bridge address")
               )
             );
@@ -571,13 +567,7 @@ export function useBridge(): UseBridgeReturn {
         signedJammedTx = wasm.jam(wasm.nockchainTxToNoun(signedNockchainTx));
 
         // Reconstruct notes and spend conditions from stored protobuf
-        const txEngineSettings: TxEngineSettings = {
-          tx_engine_version: 1 as const,
-          tx_engine_patch: 0,
-          min_fee: "256" as Nicks,
-          cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
-          witness_word_div: 1,
-        };
+        const txEngineSettings = await currentTxEngineSettings(wasm);
 
         // Recreate TxBuilder from the signed transaction
         const rebuiltBuilder = wasm.TxBuilder.fromRawTx(

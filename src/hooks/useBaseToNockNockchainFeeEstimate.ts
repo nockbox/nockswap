@@ -9,9 +9,10 @@ import { formatNOCK } from "@/lib/utils";
 import { isNockAddress } from "@/lib/validators";
 
 /**
- * Live estimate of the Nockchain network fee for Base→Nock when a gRPC URL is available
- * (Iris connect or `NEXT_PUBLIC_NOCKCHAIN_GRPC_URL`).
- * Uses public balance-by-first-name data (same first-name as the bridge multisig).
+ * Best-effort estimate of the Nockchain network fee for Base→Nock when a gRPC URL is available
+ * (Iris connect or the active bridge config's gRPC endpoint).
+ * Uses public balance-by-first-name data and excludes notes newer than the configured
+ * Nockchain confirmation depth. Reserved sequencer inputs are still unknowable here.
  */
 export function useBaseToNockNockchainFeeEstimate(
   amountNock: number | null,
@@ -70,7 +71,7 @@ export function useBaseToNockNockchainFeeEstimate(
         }
       } catch {
         if (!cancelled) {
-          setDisplay("—");
+          setDisplay("Unavailable");
           setFeeNicks(null);
         }
       } finally {

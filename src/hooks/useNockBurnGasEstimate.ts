@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { encodeFunctionData, formatUnits } from "viem";
 import { useAccount, useEstimateFeesPerGas, useEstimateGas } from "wagmi";
 import {
-  burnLockRootFromEnv,
+  burnLockRootForNockRecipient,
   getNockTokenAddress,
   nockBurnAbi,
   nockAmountToTokenUnits,
 } from "@/lib/nockToken";
+import { isNockAddress } from "@/lib/validators";
 
 function formatEthApprox(wei: bigint): string {
   const s = formatUnits(wei, 18);
@@ -24,11 +25,20 @@ function formatEthApprox(wei: bigint): string {
  * `maxFeePerGas` (EIP-1559) or `gasPrice`. Does not add OP Stack L1 data fee,
  * so on Base the true cost can be slightly higher.
  */
-export function useNockBurnGasEstimate(amountNock: number | null): {
+export function useNockBurnGasEstimate(
+  amountNock: number | null,
+  destinationNockAddress?: string | null,
+  preparedLockRoot?: `0x${string}`
+): {
   networkFeeDisplay: string;
 } {
   const { address } = useAccount();
   const tokenAddr = getNockTokenAddress();
+  const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>(
+    preparedLockRoot
+  );
+
+  const destination = destinationNockAddress?.trim() ?? "";
 
   const amountWei = useMemo(() => {
     if (
@@ -45,10 +55,32 @@ export function useNockBurnGasEstimate(amountNock: number | null): {
     }
   }, [amountNock]);
 
-  const lockRoot = useMemo(() => burnLockRootFromEnv(), []);
+  useEffect(() => {
+    if (preparedLockRoot) {
+      setLockRoot(preparedLockRoot);
+      return;
+    }
+    if (!destination || !isNockAddress(destination)) {
+      setLockRoot(undefined);
+      return;
+    }
+    let cancelled = false;
+    setLockRoot(undefined);
+    burnLockRootForNockRecipient(destination)
+      .then(({ lockRoot: resolved }) => {
+        if (!cancelled) setLockRoot(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) setLockRoot(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [destination, preparedLockRoot]);
 
   const calldata = useMemo(() => {
     if (!tokenAddr || amountWei === undefined) return undefined;
+    if (!lockRoot) return undefined;
     return encodeFunctionData({
       abi: nockBurnAbi,
       functionName: "burn",

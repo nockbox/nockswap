@@ -7,15 +7,13 @@ import type {
   SpendCondition,
   TxEngineSettings,
 } from "@nockbox/iris-wasm";
+import { currentTxEngineSettings } from "@/lib/bridge";
 import {
-  ZORP_BRIDGE_THRESHOLD,
-  ZORP_BRIDGE_ADDRESSES,
-  DEFAULT_FEE_PER_WORD,
-} from "@/lib/bridge";
-import {
+  NICKS_PER_NOCK,
   PROTOCOL_FEE_NICKS_PER_NOCK,
   toWholeNockNicks,
 } from "@/lib/constants";
+import { getActiveBridgeConfig } from "@/lib/bridgeConfig";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 
 function parseDigestString(value: string, field: string): Digest {
@@ -27,8 +25,8 @@ function parseDigestString(value: string, field: string): Digest {
   return trimmed as Digest;
 }
 
-function withdrawalBridgeFeeNicks(burnedAmountNicks: bigint): bigint {
-  const chunks = (burnedAmountNicks + 65535n) / 65536n;
+export function withdrawalBridgeFeeNicks(burnedAmountNicks: bigint): bigint {
+  const chunks = (burnedAmountNicks + NICKS_PER_NOCK - 1n) / NICKS_PER_NOCK;
   return chunks * PROTOCOL_FEE_NICKS_PER_NOCK;
 }
 
@@ -39,25 +37,133 @@ function noteNameKey(note: Note): string {
   return `${first}\0${last}`;
 }
 
-function sortBridgeNotesForWithdrawal(notes: Note[]): Note[] {
+export interface BridgeInventoryNote {
+  note: Note;
+  originPage: bigint;
+}
+
+function asNonNegativeBigInt(value: unknown): bigint | null {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : null;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) return null;
+    return BigInt(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    return BigInt(trimmed);
+  }
+  return null;
+}
+
+function readObjectValue(value: unknown, key: string): unknown {
+  if (value && typeof value === "object" && key in value) {
+    return (value as Record<string, unknown>)[key];
+  }
+  return undefined;
+}
+
+function extractOriginPage(...candidates: unknown[]): bigint | null {
+  for (const candidate of candidates) {
+    const direct =
+      asNonNegativeBigInt(readObjectValue(candidate, "origin_page")) ??
+      asNonNegativeBigInt(readObjectValue(candidate, "originPage")) ??
+      asNonNegativeBigInt(readObjectValue(candidate, "origin"));
+    if (direct !== null) return direct;
+
+    const origin = readObjectValue(candidate, "origin");
+    const nested =
+      asNonNegativeBigInt(readObjectValue(origin, "page")) ??
+      asNonNegativeBigInt(readObjectValue(origin, "height")) ??
+      asNonNegativeBigInt(readObjectValue(origin, "block_height"));
+    if (nested !== null) return nested;
+  }
+  return null;
+}
+
+function extractHeight(value: unknown): bigint | null {
+  const direct = asNonNegativeBigInt(value);
+  if (direct !== null) return direct;
+  return (
+    asNonNegativeBigInt(readObjectValue(value, "height")) ??
+    asNonNegativeBigInt(readObjectValue(value, "block_height")) ??
+    asNonNegativeBigInt(readObjectValue(value, "snapshot_height")) ??
+    asNonNegativeBigInt(readObjectValue(value, "snapshotHeight")) ??
+    asNonNegativeBigInt(readObjectValue(value, "page")) ??
+    asNonNegativeBigInt(readObjectValue(value, "tip"))
+  );
+}
+
+async function currentSnapshotHeight(
+  grpcClient: unknown
+): Promise<bigint> {
+  const methodNames = [
+    "getCurrentSnapshotHeight",
+    "getSnapshotHeight",
+    "getTipHeight",
+    "getTip",
+    "getLatestBlockHeight",
+    "getBlockHeight",
+    "getHeight",
+  ];
+
+  for (const methodName of methodNames) {
+    const method = readObjectValue(grpcClient, methodName);
+    if (typeof method !== "function") continue;
+    try {
+      const value = await method.call(grpcClient);
+      const height = extractHeight(value);
+      if (height !== null) {
+        return height;
+      }
+    } catch {
+      // Older GrpcClient builds do not expose every candidate method.
+    }
+  }
+
+  throw new Error(
+    "Nockchain snapshot height unavailable; cannot produce a safe-origin estimate."
+  );
+}
+
+export function filterSafeBridgeNotes(
+  notes: BridgeInventoryNote[],
+  snapshotHeight: bigint,
+  confirmationDepth: number
+): BridgeInventoryNote[] {
+  const safeTip = snapshotHeight - BigInt(confirmationDepth);
+  if (safeTip < 0n) {
+    return [];
+  }
+  return notes.filter((item) => item.originPage <= safeTip);
+}
+
+export function sortBridgeNotesForWithdrawal(
+  notes: BridgeInventoryNote[]
+): BridgeInventoryNote[] {
   return [...notes].sort((a, b) => {
-    const assetsA = BigInt(a.assets);
-    const assetsB = BigInt(b.assets);
+    const assetsA = BigInt(a.note.assets);
+    const assetsB = BigInt(b.note.assets);
     if (assetsA !== assetsB) {
       return assetsA < assetsB ? -1 : 1;
     }
-    const ka = noteNameKey(a);
-    const kb = noteNameKey(b);
+    const ka = noteNameKey(a.note);
+    const kb = noteNameKey(b.note);
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
 }
 
-function selectNotesCoveringSpendable(sortedNotes: Note[], spendableNicks: bigint): Note[] {
+export function selectNotesCoveringSpendable(
+  sortedNotes: BridgeInventoryNote[],
+  spendableNicks: bigint
+): Note[] {
   const selected: Note[] = [];
   let total = 0n;
-  for (const note of sortedNotes) {
-    selected.push(note);
-    total += BigInt(note.assets);
+  for (const item of sortedNotes) {
+    selected.push(item.note);
+    total += BigInt(item.note.assets);
     if (total >= spendableNicks) {
       return selected;
     }
@@ -78,18 +184,12 @@ function selectNotesCoveringSpendable(sortedNotes: Note[], spendableNicks: bigin
  */
 function buildWithdrawalFeeSample(
   wasm: typeof import("@nockbox/iris-wasm"),
+  txEngineSettings: TxEngineSettings,
   selectedNotes: Note[],
   bridgeSpend: SpendCondition,
   recipientSpend: SpendCondition,
   netToRecipientNicks: bigint
 ): bigint {
-  const txEngineSettings: TxEngineSettings = {
-    tx_engine_version: 1,
-    tx_engine_patch: 1,
-    min_fee: "256" as Nicks,
-    cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
-    witness_word_div: 4,
-  };
   const builder = new wasm.TxBuilder(txEngineSettings);
 
   const bridgeSpendClone = wasm.spendConditionFromProtobuf(
@@ -155,7 +255,8 @@ export interface EstimateBaseToNockNockchainFeeParams {
 export async function estimateBaseToNockNockchainFeeNicks(
   params: EstimateBaseToNockNockchainFeeParams
 ): Promise<bigint> {
-  let { burnedAmountNicks, recipientNockAddress, grpcEndpoint } = params;
+  const { recipientNockAddress, grpcEndpoint } = params;
+  let { burnedAmountNicks } = params;
   burnedAmountNicks = toWholeNockNicks(burnedAmountNicks);
   if (burnedAmountNicks <= 0n) {
     throw new Error("Burn amount must be at least 1 whole NOCK in nicks.");
@@ -166,9 +267,12 @@ export async function estimateBaseToNockNockchainFeeNicks(
     await wasm.default();
   }
 
+  const bridgeConfig = getActiveBridgeConfig();
   const bridgePkh = wasm.pkhNew(
-    BigInt(ZORP_BRIDGE_THRESHOLD),
-    ZORP_BRIDGE_ADDRESSES.map((a) => parseDigestString(a, "bridge address"))
+    BigInt(bridgeConfig.bridgeThreshold),
+    bridgeConfig.bridgeSignerPkhs.map((a) =>
+      parseDigestString(a, "bridge address")
+    )
   );
   const bridgeSpend = wasm.spendConditionNewPkh(bridgePkh);
   const bridgeFirstName = wasm.spendConditionFirstName(bridgeSpend);
@@ -177,23 +281,54 @@ export async function estimateBaseToNockNockchainFeeNicks(
   const recipientSpend = wasm.spendConditionNewPkh(wasm.pkhSingle(digest));
 
   const grpcClient = new wasm.GrpcClient(grpcEndpoint);
+  const txEngineSettings = await currentTxEngineSettings(wasm);
   const balance = await grpcClient.getBalanceByFirstName(bridgeFirstName);
+  const snapshotHeight =
+    (await currentSnapshotHeight(grpcClient).catch(() => null)) ??
+    extractHeight(balance);
+  if (snapshotHeight === null) {
+    throw new Error(
+      "Nockchain snapshot height unavailable; cannot produce a safe-origin estimate."
+    );
+  }
 
-  const rawNotes: Note[] = [];
+  const rawNotes: BridgeInventoryNote[] = [];
+  let missingOriginPage = 0;
   if (balance?.notes) {
     for (const noteEntry of balance.notes) {
       const pbNote = (noteEntry as { note?: unknown }).note ?? noteEntry;
       if (pbNote) {
-        rawNotes.push(wasm.noteFromProtobuf(pbNote as never));
+        const note = wasm.noteFromProtobuf(pbNote as never);
+        const originPage = extractOriginPage(noteEntry, pbNote, note);
+        if (originPage === null) {
+          missingOriginPage++;
+          continue;
+        }
+        rawNotes.push({ note, originPage });
       }
     }
   }
 
   if (rawNotes.length === 0) {
-    throw new Error("No bridge notes returned for this endpoint.");
+    const suffix =
+      missingOriginPage > 0
+        ? " Bridge notes are missing origin_page metadata."
+        : "";
+    throw new Error(`No bridge notes returned for this endpoint.${suffix}`);
   }
 
-  const sorted = sortBridgeNotesForWithdrawal(rawNotes);
+  const safeNotes = filterSafeBridgeNotes(
+    rawNotes,
+    snapshotHeight,
+    bridgeConfig.nockchainConfirmationDepth
+  );
+  if (safeNotes.length === 0) {
+    throw new Error(
+      "No bridge notes are old enough for the configured confirmation depth."
+    );
+  }
+
+  const sorted = sortBridgeNotesForWithdrawal(safeNotes);
   const withdrawalFee = withdrawalBridgeFeeNicks(burnedAmountNicks);
   const spendable = burnedAmountNicks - withdrawalFee;
   if (spendable <= 0n) {
@@ -218,6 +353,7 @@ export async function estimateBaseToNockNockchainFeeNicks(
     }
     const nextFee = buildWithdrawalFeeSample(
       wasm,
+      txEngineSettings,
       selected,
       bridgeSpend,
       recipientSpend,
