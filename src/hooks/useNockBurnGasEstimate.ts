@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { encodeFunctionData, formatUnits } from "viem";
-import { useAccount, useChainId, useEstimateFeesPerGas, useEstimateGas } from "wagmi";
+import { useAccount, useEstimateFeesPerGas, useEstimateGas } from "wagmi";
 import {
   burnLockRootFromRecipientPkh,
   getNockTokenAddress,
@@ -31,7 +31,6 @@ export function useNockBurnGasEstimate(
   networkFeeDisplay: string;
 } {
   const { address } = useAccount();
-  const chainId = useChainId();
   const tokenAddr = getNockTokenAddress();
   const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>();
 
@@ -59,7 +58,7 @@ export function useNockBurnGasEstimate(
 
     let cancelled = false;
     setLockRoot(undefined);
-    burnLockRootFromRecipientPkh(trimmedDestination, chainId)
+    burnLockRootFromRecipientPkh(trimmedDestination)
       .then((derivedLockRoot) => {
         if (!cancelled) {
           setLockRoot(derivedLockRoot);
@@ -74,7 +73,7 @@ export function useNockBurnGasEstimate(
     return () => {
       cancelled = true;
     };
-  }, [chainId, destinationNockAddress]);
+  }, [destinationNockAddress]);
 
   const calldata = useMemo(() => {
     if (!tokenAddr || amountWei === undefined || lockRoot === undefined) {

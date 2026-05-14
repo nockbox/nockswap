@@ -1,6 +1,6 @@
 "use client";
 
-import { useChainId, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 import {
   assertValidNockTokenAddress,
   burnLockRootFromRecipientPkh,
@@ -11,7 +11,6 @@ import {
 
 export function useNockBurn() {
   const { writeContractAsync, isPending } = useWriteContract();
-  const chainId = useChainId();
 
   const burnNock = async (
     amountNock: number,
@@ -30,10 +29,7 @@ export function useNockBurn() {
       throw new Error("Burn amount must be at least 1 whole NOCK");
     }
     const amount = nockAmountToTokenUnits(wholeNock);
-    const lockRoot = await burnLockRootFromRecipientPkh(
-      destinationNockAddress,
-      chainId
-    );
+    const lockRoot = await burnLockRootFromRecipientPkh(destinationNockAddress);
 
     const hash = await writeContractAsync({
       address: nockAddress as `0x${string}`,
