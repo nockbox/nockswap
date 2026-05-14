@@ -1,6 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import {
+  assertValidBridgeTransaction,
+  buildBridgeTransaction,
+  initWasm,
+  RpcError,
+  UserRejectedError,
+} from "@nockbox/iris-sdk";
 import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { base58 } from "@scure/base";
 import type {
@@ -8,26 +15,24 @@ import type {
   Digest,
   Nicks,
   Note,
-  NoteData,
-  Noun,
   PbCom2Note,
   PbCom2RawTransaction,
   SpendCondition,
-  TxEngineSettings,
-} from "@nockbox/iris-wasm";
+} from "@nockbox/iris-sdk/wasm";
 import {
-  ZORP_BRIDGE_THRESHOLD,
-  ZORP_BRIDGE_ADDRESSES,
-  isBridgeConfigured as checkBridgeConfigured,
-  BRIDGE_NOTE_KEY,
-  DEFAULT_FEE_PER_WORD,
+  bridgeOptionsFromActivationHeights,
   evmAddressToBelts,
+  getZorpBridgeConfig,
+  isBridgeConfigured as checkBridgeConfigured,
   verifyBeltEncoding,
-  buildBridgeNoun,
-  assertValidBridgeTransaction,
 } from "@/lib/bridge";
 import { isEvmAddress } from "@/lib/validators";
-import { MIN_BRIDGE_AMOUNT_NOCK, ZORP_BRIDGE_LOCK_ROOT } from "@/lib/constants";
+import {
+  MIN_BRIDGE_AMOUNT_NOCK,
+  ZORP_BRIDGE_ADDRESSES,
+  ZORP_BRIDGE_LOCK_ROOT,
+  ZORP_BRIDGE_THRESHOLD,
+} from "@/lib/constants";
 
 export type BridgeStatus =
   | "idle"
@@ -119,7 +124,13 @@ function parseDigestString(value: string, field: string): Digest {
 }
 
 export function useBridge(): UseBridgeReturn {
-  const { isConnected, address, grpcEndpoint, signRawTx } = useWallet();
+  const {
+    isConnected,
+    address,
+    grpcEndpoint,
+    txEngineActivationHeights,
+    signRawTx,
+  } = useWallet();
   const [status, setStatus] = useState<BridgeStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BridgeResult | null>(null);
@@ -127,6 +138,8 @@ export function useBridge(): UseBridgeReturn {
 
   // Keep a ref to the grpc client to avoid recreating
   const grpcClientRef = useRef<unknown>(null);
+
+  const confirmInFlightRef = useRef(false);
 
   // Store prepared transaction for confirmation step
   const preparedTxRef = useRef<PreparedTransaction | null>(null);
@@ -201,6 +214,12 @@ export function useBridge(): UseBridgeReturn {
         throw new Error("gRPC endpoint not available");
       }
 
+      if (!txEngineActivationHeights) {
+        throw new Error(
+          "Transaction engine settings not available; connect your wallet and try again"
+        );
+      }
+
       if (!isBridgeConfigured) {
         throw new Error("Bridge not configured");
       }
@@ -226,11 +245,16 @@ export function useBridge(): UseBridgeReturn {
         }
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
-        // Load and initialize WASM module
-        const wasm = await import("@nockbox/iris-wasm");
-        if (typeof wasm.default === "function") {
-          await wasm.default();
-        }
+        await initWasm();
+        const wasm = await import("@nockbox/iris-sdk/wasm");
+
+        const bridgeConfig = getZorpBridgeConfig();
+        const bridgeOptions = bridgeOptionsFromActivationHeights(
+          txEngineActivationHeights
+        );
+        const costPerWord = BigInt(
+          String(bridgeOptions.txEngineSettings.cost_per_word)
+        );
 
         // Create or reuse gRPC client
         if (!grpcClientRef.current) {
@@ -309,7 +333,7 @@ export function useBridge(): UseBridgeReturn {
             BigInt(numNotes) * wordsPerInput +
             numOutputs * wordsPerOutput;
           const safeWords = (totalWords * 110n) / 100n;
-          return safeWords * DEFAULT_FEE_PER_WORD;
+          return safeWords * costPerWord;
         };
 
         // Calculate total available balance
@@ -351,16 +375,6 @@ export function useBridge(): UseBridgeReturn {
         }
 
         // Build transaction
-        const txEngineSettings: TxEngineSettings = {
-          tx_engine_version: 1 as const,
-          tx_engine_patch: 0,
-          min_fee: "256" as Nicks,
-          cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
-          witness_word_div: 1,
-        };
-        const builder = new wasm.TxBuilder(txEngineSettings);
-
-        // Verify bridge lock root configuration once before building seeds
         {
           const testBridgePkh = wasm.pkhNew(
             BigInt(ZORP_BRIDGE_THRESHOLD),
@@ -377,84 +391,28 @@ export function useBridge(): UseBridgeReturn {
           }
         }
 
-        let remainingGift = amountInNicks;
-
-        for (let i = 0; i < selectedNotes.length; i++) {
-          const note = selectedNotes[i];
-          const spendCondition = selectedConditions[i];
-          const noteAssets = BigInt(note.assets);
-
-          const giftPortion =
-            remainingGift < noteAssets ? remainingGift : noteAssets;
-          remainingGift -= giftPortion;
-
-          const noteClone = wasm.noteFromProtobuf(wasm.noteToProtobuf(note));
-          const spendConditionClone = wasm.spendConditionFromProtobuf(
-            wasm.spendConditionToProtobuf(spendCondition)
+        const { transaction: nockchainTx, fee: feeStr } =
+          await buildBridgeTransaction(
+            {
+              inputNotes: selectedNotes,
+              spendConditions: selectedConditions,
+              amountInNicks: amountInNicks.toString() as Nicks,
+              destinationAddress,
+              refundPkh: address,
+            },
+            bridgeConfig,
+            bridgeOptions
           );
 
-          // Create refund spend condition (back to user)
-          const refundSpendCondition = wasm.spendConditionNewPkh(
-            wasm.pkhSingle(digestAddress)
-          );
-
-          const spendBuilder = new wasm.SpendBuilder(
-            noteClone,
-            spendConditionClone,
-            null,
-            refundSpendCondition
-          );
-
-          if (giftPortion > 0n) {
-            const parentHash = wasm.noteHash(note);
-
-            // Put bridge noteData on all seeds
-            const freshBridgeNounJs = buildBridgeNoun(destinationAddress);
-            const noteData: NoteData = [
-              [BRIDGE_NOTE_KEY, freshBridgeNounJs as unknown as Noun],
-            ];
-
-            // Create fresh lock root
-            const freshBridgePkh = wasm.pkhNew(
-              BigInt(ZORP_BRIDGE_THRESHOLD),
-              ZORP_BRIDGE_ADDRESSES.map((a) =>
-                parseDigestString(a, "bridge address")
-              )
-            );
-            const freshBridgeSpendCondition =
-              wasm.spendConditionNewPkh(freshBridgePkh);
-
-            const seed = {
-              output_source: null,
-              lock_root: freshBridgeSpendCondition,
-              gift: giftPortion.toString() as Nicks,
-              note_data: noteData,
-              parent_hash: parentHash,
-            };
-
-            spendBuilder.seed(seed);
-          }
-
-          spendBuilder.computeRefund(false);
-          builder.spend(spendBuilder);
-        }
-
-        // Calculate exact fee
-        builder.recalcAndSetFee(false);
-        const fee = BigInt(builder.curFee());
-
-        // Build transaction
-        const nockchainTx = builder.build();
+        const fee = BigInt(feeStr);
         const rawTx = wasm.nockchainTxToRawTx(nockchainTx);
-
-        // Store prepared transaction data
         const rawTxProto = wasm.rawTxToProtobuf(rawTx);
 
-        // PRE-SIGNING VALIDATION: Validate the transaction before allowing signature
-        // This ensures the transaction has correct bridge output, amount, and note data
         const preValidation = await assertValidBridgeTransaction(
           rawTxProto,
-          "pre-signing"
+          "pre-signing",
+          bridgeConfig,
+          bridgeOptions
         );
 
         // Store prepared transaction data for confirmation
@@ -477,10 +435,11 @@ export function useBridge(): UseBridgeReturn {
         // Create preview using VALIDATED data from transaction (not UI values)
         // This ensures the confirmation screen shows what's actually in the transaction
         const txId = nockchainTx.id || "unknown";
+        const bridgeAmt = BigInt(preValidation.bridgeAmountNicks!);
         const transactionPreview: TransactionPreview = {
-          amountInNicks: preValidation.bridgeAmountNicks!,
+          amountInNicks: bridgeAmt,
           fee,
-          totalCost: preValidation.bridgeAmountNicks! + fee,
+          totalCost: bridgeAmt + fee,
           notesUsed: selectedNotes.length,
           destinationAddress: preValidation.destinationAddress!,
           belts: preValidation.belts!,
@@ -510,6 +469,7 @@ export function useBridge(): UseBridgeReturn {
       isConnected,
       address,
       grpcEndpoint,
+      txEngineActivationHeights,
       isBridgeConfigured,
       validateDestination,
     ]
@@ -531,11 +491,22 @@ export function useBridge(): UseBridgeReturn {
       throw new Error("Transaction not in confirming state");
     }
 
+    if (!txEngineActivationHeights) {
+      throw new Error(
+        "Transaction engine settings not available; connect your wallet and try again"
+      );
+    }
+
+    if (confirmInFlightRef.current) {
+      return undefined;
+    }
+    confirmInFlightRef.current = true;
+
     setStatus("awaiting_signature");
 
     try {
       // Sign via wallet
-      const signedTxBytes = await signRawTx({
+      const signedTxProto = await signRawTx({
         rawTx: prepared.rawTx,
         notes: (
           prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }
@@ -547,11 +518,14 @@ export function useBridge(): UseBridgeReturn {
 
       setStatus("pending");
 
-      // Load WASM for validation and gRPC
-      const wasm = await import("@nockbox/iris-wasm");
-      if (typeof wasm.default === "function") {
-        await wasm.default();
-      }
+      await initWasm();
+      const wasm = await import("@nockbox/iris-sdk/wasm");
+
+      const bridgeConfig = getZorpBridgeConfig();
+      const bridgeOptions = bridgeOptionsFromActivationHeights(
+        txEngineActivationHeights
+      );
+      const txEngineSettings = bridgeOptions.txEngineSettings;
 
       // POST-SIGNING VALIDATION: Recreate TxBuilder and validate
       // This ensures the signed transaction is valid (fee sufficient, balanced, etc.)
@@ -559,9 +533,7 @@ export function useBridge(): UseBridgeReturn {
       let signedJammedTx: Uint8Array;
       try {
         // Parse the signed transaction bytes back to RawTx
-        const signedRawTx = wasm.rawTxFromProtobuf(
-          signedTxBytes as unknown as PbCom2RawTransaction
-        );
+        const signedRawTx = wasm.rawTxFromProtobuf(signedTxProto);
 
         // Get the signed TX ID and convert to JAM format for download
         const signedNockchainTx = wasm.rawTxV1ToNockchainTx(
@@ -571,13 +543,6 @@ export function useBridge(): UseBridgeReturn {
         signedJammedTx = wasm.jam(wasm.nockchainTxToNoun(signedNockchainTx));
 
         // Reconstruct notes and spend conditions from stored protobuf
-        const txEngineSettings: TxEngineSettings = {
-          tx_engine_version: 1 as const,
-          tx_engine_patch: 0,
-          min_fee: "256" as Nicks,
-          cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
-          witness_word_div: 1,
-        };
 
         // Recreate TxBuilder from the signed transaction
         const rebuiltBuilder = wasm.TxBuilder.fromRawTx(
@@ -603,10 +568,11 @@ export function useBridge(): UseBridgeReturn {
         );
       }
 
-      // Our custom bridge validation (checks destination, amount, note data)
       await assertValidBridgeTransaction(
-        signedTxBytes as unknown as PbCom2RawTransaction,
-        "post-signing"
+        signedTxProto,
+        "post-signing",
+        bridgeConfig,
+        bridgeOptions
       );
 
       // Get or create gRPC client
@@ -617,10 +583,25 @@ export function useBridge(): UseBridgeReturn {
         typeof wasm.GrpcClient
       >;
 
-      // Submit to network
-      await grpcClient.sendTransaction(
-        signedTxBytes as unknown as PbCom2RawTransaction
+      const unsignedRawTx = wasm.rawTxFromProtobuf(
+        prepared.rawTx as PbCom2RawTransaction
       );
+      const signedRawTx = wasm.rawTxFromProtobuf(signedTxProto);
+
+      console.log("[Bridge] Transaction about to submit", {
+        txId: signedTxId,
+        unsignedRawProtobuf: prepared.rawTx,
+        unsignedRawTx,
+        signedRawProtobuf: signedTxProto,
+        signedRawTx,
+        jammedByteLength: signedJammedTx.byteLength,
+        destinationAddress: prepared.destinationAddress,
+        amountInNicks: prepared.amountInNicks.toString(),
+        feeNicks: prepared.fee.toString(),
+      });
+
+      // Submit to network
+      await grpcClient.sendTransaction(signedTxProto);
 
       const bridgeResult: BridgeResult = {
         txId: signedTxId,
@@ -642,14 +623,12 @@ export function useBridge(): UseBridgeReturn {
           ? err.message
           : String(err) || "Bridge transaction failed";
 
-      // Check if user cancelled
       const isCancellation =
-        message.toLowerCase().includes("reject") ||
-        message.toLowerCase().includes("cancel") ||
-        message.toLowerCase().includes("denied");
+        err instanceof UserRejectedError ||
+        (err instanceof RpcError && err.code === 4001);
 
       if (isCancellation) {
-        setStatus("confirming"); // Go back to confirming state
+        setStatus("confirming");
         return undefined;
       }
 
@@ -657,8 +636,10 @@ export function useBridge(): UseBridgeReturn {
       setError(message);
       setStatus("error");
       throw err;
+    } finally {
+      confirmInFlightRef.current = false;
     }
-  }, [status, signRawTx, grpcEndpoint]);
+  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights]);
 
   return {
     // State
