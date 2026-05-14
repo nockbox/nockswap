@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { encodeFunctionData, formatUnits } from "viem";
-import { useAccount, useEstimateFeesPerGas, useEstimateGas } from "wagmi";
+import { useAccount, useChainId, useEstimateFeesPerGas, useEstimateGas } from "wagmi";
 import {
-  burnLockRootFromEnv,
+  burnLockRootFromRecipientPkh,
   getNockTokenAddress,
   nockBurnAbi,
   nockAmountToTokenUnits,
@@ -24,11 +24,16 @@ function formatEthApprox(wei: bigint): string {
  * `maxFeePerGas` (EIP-1559) or `gasPrice`. Does not add OP Stack L1 data fee,
  * so on Base the true cost can be slightly higher.
  */
-export function useNockBurnGasEstimate(amountNock: number | null): {
+export function useNockBurnGasEstimate(
+  amountNock: number | null,
+  destinationNockAddress: string | null
+): {
   networkFeeDisplay: string;
 } {
   const { address } = useAccount();
+  const chainId = useChainId();
   const tokenAddr = getNockTokenAddress();
+  const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>();
 
   const amountWei = useMemo(() => {
     if (
@@ -45,10 +50,36 @@ export function useNockBurnGasEstimate(amountNock: number | null): {
     }
   }, [amountNock]);
 
-  const lockRoot = useMemo(() => burnLockRootFromEnv(), []);
+  useEffect(() => {
+    const trimmedDestination = destinationNockAddress?.trim() ?? "";
+    if (!trimmedDestination) {
+      setLockRoot(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    setLockRoot(undefined);
+    burnLockRootFromRecipientPkh(trimmedDestination, chainId)
+      .then((derivedLockRoot) => {
+        if (!cancelled) {
+          setLockRoot(derivedLockRoot);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLockRoot(undefined);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId, destinationNockAddress]);
 
   const calldata = useMemo(() => {
-    if (!tokenAddr || amountWei === undefined) return undefined;
+    if (!tokenAddr || amountWei === undefined || lockRoot === undefined) {
+      return undefined;
+    }
     return encodeFunctionData({
       abi: nockBurnAbi,
       functionName: "burn",

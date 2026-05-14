@@ -13,13 +13,17 @@ import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { formatNOCK } from "@/lib/utils";
 
 type ResultStatus = "success" | "failed" | "confirming";
+type FlowDirection = "nock_to_base" | "base_to_nock";
 
 interface ResultCardProps {
   isDarkMode?: boolean;
   status?: ResultStatus;
+  flowDirection?: FlowDirection;
   errorMessage?: string;
   networkFeePercent?: string;
   networkFeeAmount?: string;
+  nockchainNetworkFeeAmount?: string;
+  nockchainNetworkFeeLoading?: boolean;
   totalUsd?: string;
   totalNock?: string;
   receivingAddress?: string;
@@ -32,14 +36,20 @@ interface ResultCardProps {
   preview?: TransactionPreview;
   bridgeStatus?: BridgeStatus;
   result?: BridgeResult;
+  confirmingAmountInNicks?: bigint;
+  confirmingNockchainFeeNicks?: bigint | null;
+  confirmSubmitting?: boolean;
 }
 
 export default function ResultCard({
   isDarkMode = false,
   status = "success",
+  flowDirection = "nock_to_base",
   errorMessage,
   networkFeePercent = PROTOCOL_FEE_DISPLAY,
   networkFeeAmount = "0 NOCK",
+  nockchainNetworkFeeAmount,
+  nockchainNetworkFeeLoading = false,
   totalUsd = "",
   totalNock = "0 NOCK",
   receivingAddress = "",
@@ -52,6 +62,9 @@ export default function ResultCard({
   preview,
   bridgeStatus,
   result,
+  confirmingAmountInNicks,
+  confirmingNockchainFeeNicks,
+  confirmSubmitting = false,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [downloadHover, setDownloadHover] = useState(false);
@@ -66,16 +79,30 @@ export default function ResultCard({
   // Note: BigInt division automatically truncates (rounds down)
   const calculateBridgeFee = (): string => {
     // Confirming flow has `preview`; success flow only has `result` (see page.tsx).
-    const amountInNicks = preview?.amountInNicks ?? result?.amountInNicks;
+    const amountInNicks =
+      preview?.amountInNicks ?? result?.amountInNicks ?? confirmingAmountInNicks;
     if (amountInNicks === undefined) return "0 NOCK";
-    const bridgeFeeNicks =
-      (amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const bridgeChunks =
+      flowDirection === "base_to_nock"
+        ? (amountInNicks + 65535n) / 65536n
+        : amountInNicks / 65536n;
+    const bridgeFeeNicks = bridgeChunks * PROTOCOL_FEE_NICKS_PER_NOCK;
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
 
   // Calculate amount after bridge fee deduction
   const calculateAmountAfterBridgeFee = (): string => {
+    if (flowDirection === "base_to_nock" && confirmingAmountInNicks !== undefined) {
+      const bridgeFeeNicks =
+        ((confirmingAmountInNicks + 65535n) / 65536n) *
+        PROTOCOL_FEE_NICKS_PER_NOCK;
+      const nockchainFeeNicks = confirmingNockchainFeeNicks ?? 0n;
+      const amountAfterFees =
+        confirmingAmountInNicks - bridgeFeeNicks - nockchainFeeNicks;
+      const amountNock = Number(amountAfterFees) / NOCK_TO_NICKS;
+      return `${formatNOCK(amountNock)} NOCK`;
+    }
     if (!preview) return totalNock;
     const bridgeFeeNicks =
       (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
@@ -513,6 +540,47 @@ export default function ResultCard({
             </span>
           </div>
 
+          {flowDirection === "base_to_nock" && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                width: "100%",
+              }}
+            >
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
+                }}
+              >
+                Nockchain fee
+              </span>
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
+                  opacity: 0.5,
+                }}
+              >
+                {nockchainNetworkFeeLoading
+                  ? "Estimating..."
+                  : nockchainNetworkFeeAmount ?? "—"}
+              </span>
+            </div>
+          )}
+
           {/* Bridge fee row (protocol fee) */}
           <div
             style={{
@@ -888,6 +956,7 @@ export default function ResultCard({
           <button
             onClick={onConfirm}
             disabled={
+              confirmSubmitting ||
               bridgeStatus === "awaiting_signature" ||
               bridgeStatus === "pending"
             }
@@ -901,12 +970,14 @@ export default function ResultCard({
               gap: 10,
               borderRadius: 8,
               background:
+                confirmSubmitting ||
                 bridgeStatus === "awaiting_signature" ||
                 bridgeStatus === "pending"
                   ? "#f6f5f1"
                   : "#ffc413",
               border: "none",
               cursor:
+                confirmSubmitting ||
                 bridgeStatus === "awaiting_signature" ||
                 bridgeStatus === "pending"
                   ? "wait"
@@ -925,6 +996,7 @@ export default function ResultCard({
                 lineHeight: "22px",
                 letterSpacing: 0.16,
                 opacity:
+                  confirmSubmitting ||
                   bridgeStatus === "awaiting_signature" ||
                   bridgeStatus === "pending"
                     ? 0.4
@@ -934,6 +1006,8 @@ export default function ResultCard({
               {bridgeStatus === "awaiting_signature"
                 ? "Approve in Wallet..."
                 : bridgeStatus === "pending"
+                ? "Processing..."
+                : confirmSubmitting
                 ? "Processing..."
                 : "Confirm"}
             </span>

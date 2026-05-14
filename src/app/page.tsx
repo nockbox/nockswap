@@ -56,8 +56,12 @@ export default function Home() {
   const { burnNock, isBurning: isBurnPending } = useNockBurn();
   const burnGasAmountNock =
     resultState.type === "confirming_burn" ? resultState.amountNock : null;
+  const burnDestinationNockAddress =
+    resultState.type === "confirming_burn"
+      ? resultState.destinationNockAddress
+      : null;
   const { networkFeeDisplay: burnNetworkFeeDisplay } =
-    useNockBurnGasEstimate(burnGasAmountNock);
+    useNockBurnGasEstimate(burnGasAmountNock, burnDestinationNockAddress);
   const {
     display: nockchainNetworkFeeDisplay,
     feeNicks: nockchainFeeNicksEstimate,
@@ -118,7 +122,7 @@ export default function Home() {
       nockchainFeeNicks: nockchainFeeNicksEstimate,
     };
     try {
-      const txHash = await burnNock(amountNock);
+      const txHash = await burnNock(amountNock, destinationNockAddress);
       setResultState({
         type: "base_to_nock_success",
         txHash,

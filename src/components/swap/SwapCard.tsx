@@ -26,6 +26,10 @@ interface SwapCardProps {
   isDarkMode?: boolean;
   onSwapError?: (error: string) => void;
   onPrepareSuccess?: (preview: TransactionPreview) => void;
+  onPrepareBurnSuccess?: (payload: {
+    amountNock: number;
+    destinationNockAddress: string;
+  }) => void;
   prepareTransaction: (
     destinationAddress: string,
     amountInNocks: number
@@ -37,6 +41,7 @@ export default function SwapCard({
   isDarkMode = false,
   onSwapError,
   onPrepareSuccess,
+  onPrepareBurnSuccess,
   prepareTransaction,
   bridgeStatus,
 }: SwapCardProps) {
@@ -118,6 +123,14 @@ export default function SwapCard({
     }
 
     try {
+      if (!isNockchainToBase) {
+        onPrepareBurnSuccess?.({
+          amountNock: nockAmount,
+          destinationNockAddress: receivingAddress.trim(),
+        });
+        return;
+      }
+
       // Prepare transaction and show confirmation screen
       const preview = await prepareTransaction(receivingAddress, nockAmount);
       if (preview && onPrepareSuccess) {
