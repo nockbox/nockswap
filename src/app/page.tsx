@@ -13,6 +13,7 @@ import {
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { useNockBurn } from "@/hooks/useNockBurn";
 import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
+import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import { useBaseToNockNockchainFeeEstimate } from "@/hooks/useBaseToNockNockchainFeeEstimate";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
@@ -76,6 +77,8 @@ export default function Home() {
       burnDestinationNockAddress,
       expectedBurnChainId
     );
+  const burnContractReadiness =
+    useBaseToNockContractReadiness(expectedBurnChainId);
   const {
     display: nockchainNetworkFeeDisplay,
     feeNicks: nockchainFeeNicksEstimate,
@@ -136,6 +139,11 @@ export default function Home() {
       nockchainFeeNicks: nockchainFeeNicksEstimate,
     };
     try {
+      if (!burnContractReadiness.ready) {
+        throw new Error(
+          burnContractReadiness.reason ?? "Base-to-Nock contracts are not ready."
+        );
+      }
       const txHash = await burnNock(
         amountNock,
         destinationNockAddress,
@@ -337,6 +345,11 @@ export default function Home() {
                 nockchainNetworkFeeLoading={nockchainNetworkFeeLoading}
                 confirmingNockchainFeeNicks={nockchainFeeNicksEstimate}
                 confirmSubmitting={isBurnPending}
+                confirmDisabledReason={
+                  burnContractReadiness.loading
+                    ? "Checking Base bridge contracts..."
+                    : burnContractReadiness.reason
+                }
               />
             ) : (
               <ResultCard

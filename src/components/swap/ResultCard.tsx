@@ -39,6 +39,7 @@ interface ResultCardProps {
   confirmingAmountInNicks?: bigint;
   confirmingNockchainFeeNicks?: bigint | null;
   confirmSubmitting?: boolean;
+  confirmDisabledReason?: string | null;
 }
 
 export default function ResultCard({
@@ -65,6 +66,7 @@ export default function ResultCard({
   confirmingAmountInNicks,
   confirmingNockchainFeeNicks,
   confirmSubmitting = false,
+  confirmDisabledReason,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [downloadHover, setDownloadHover] = useState(false);
@@ -73,6 +75,12 @@ export default function ResultCard({
   const isSuccess = status === "success";
   const isConfirming = status === "confirming";
   const theme = getCardTheme(isDarkMode);
+  const confirmDisabled = Boolean(
+    confirmDisabledReason ||
+      confirmSubmitting ||
+      bridgeStatus === "awaiting_signature" ||
+      bridgeStatus === "pending"
+  );
 
   // Calculate bridge fee for confirming state
   // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
@@ -917,7 +925,20 @@ export default function ResultCard({
 
       {/* Buttons section */}
       {isConfirming ? (
-        <div style={{ display: "flex", gap: 12, width: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+          {confirmDisabledReason && (
+            <div
+              style={{
+                color: theme.textSecondary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 13,
+                lineHeight: "18px",
+              }}
+            >
+              {confirmDisabledReason}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 12, width: "100%" }}>
           {/* Cancel button */}
           <button
             onClick={onHomeClick}
@@ -955,11 +976,7 @@ export default function ResultCard({
           {/* Confirm button */}
           <button
             onClick={onConfirm}
-            disabled={
-              confirmSubmitting ||
-              bridgeStatus === "awaiting_signature" ||
-              bridgeStatus === "pending"
-            }
+            disabled={confirmDisabled}
             style={{
               display: "flex",
               flex: 1,
@@ -970,18 +987,9 @@ export default function ResultCard({
               gap: 10,
               borderRadius: 8,
               background:
-                confirmSubmitting ||
-                bridgeStatus === "awaiting_signature" ||
-                bridgeStatus === "pending"
-                  ? "#f6f5f1"
-                  : "#ffc413",
+                confirmDisabled ? "#f6f5f1" : "#ffc413",
               border: "none",
-              cursor:
-                confirmSubmitting ||
-                bridgeStatus === "awaiting_signature" ||
-                bridgeStatus === "pending"
-                  ? "wait"
-                  : "pointer",
+              cursor: confirmDisabled ? "not-allowed" : "pointer",
               boxSizing: "border-box",
             }}
           >
@@ -995,12 +1003,7 @@ export default function ResultCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
-                opacity:
-                  confirmSubmitting ||
-                  bridgeStatus === "awaiting_signature" ||
-                  bridgeStatus === "pending"
-                    ? 0.4
-                    : 1,
+                opacity: confirmDisabled ? 0.4 : 1,
               }}
             >
               {bridgeStatus === "awaiting_signature"
@@ -1009,9 +1012,12 @@ export default function ResultCard({
                 ? "Processing..."
                 : confirmSubmitting
                 ? "Processing..."
+                : confirmDisabledReason
+                ? "Unavailable"
                 : "Confirm"}
             </span>
           </button>
+          </div>
         </div>
       ) : (
         <button
