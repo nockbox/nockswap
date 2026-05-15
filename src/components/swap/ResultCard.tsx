@@ -63,9 +63,11 @@ export default function ResultCard({
   // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
   // Note: BigInt division automatically truncates (rounds down)
   const calculateBridgeFee = (): string => {
-    if (!preview) return "0 NOCK";
+    // Confirming flow has `preview`; success flow only has `result` (see page.tsx).
+    const amountInNicks = preview?.amountInNicks ?? result?.amountInNicks;
+    if (amountInNicks === undefined) return "0 NOCK";
     const bridgeFeeNicks =
-      (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+      (amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };

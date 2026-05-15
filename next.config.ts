@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  transpilePackages: ["@nockbox/iris-sdk", "@nockbox/iris-wasm"],
 };
 
 export default nextConfig;
