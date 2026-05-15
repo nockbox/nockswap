@@ -234,9 +234,11 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                 color: theme.textPrimary,
               }}
             >
-              <img
+              <Image
                 src="/assets/information.svg"
                 alt="Info"
+                width={16}
+                height={16}
                 style={{ width: 16, height: 16 }}
               />
               <span

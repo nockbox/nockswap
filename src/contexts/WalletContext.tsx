@@ -18,7 +18,6 @@ import {
 } from "@nockbox/iris-sdk";
 import type { Account, Address, SignTxResponse } from "@nockbox/iris-sdk";
 import type {
-  Note,
   Nicks,
   PbCom2Note,
   PbCom2RawTransaction,

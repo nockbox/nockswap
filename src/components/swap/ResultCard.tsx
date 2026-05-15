@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import {
   ASSETS,
   bridgeFeeNicksCeil,
@@ -198,9 +199,11 @@ export default function ResultCard({
       >
         {/* Status icon - only show for success/failed, not confirming */}
         {!isConfirming && (
-          <img
+          <Image
             src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
             alt={isSuccess ? "Success" : "Failed"}
+            width={isMobile ? 52 : 64}
+            height={isMobile ? 52 : 64}
             style={{
               width: isMobile ? 52 : 64,
               height: isMobile ? 52 : 64,
@@ -300,9 +303,11 @@ export default function ResultCard({
                 flexShrink: 0,
               }}
             >
-              <img
+              <Image
                 src={ASSETS.nockToken}
                 alt="NOCK"
+                width={40}
+                height={40}
                 style={{
                   width: 40,
                   height: 40,
@@ -324,9 +329,11 @@ export default function ResultCard({
                   background: "#1a1a1a",
                 }}
               >
-                <img
+                <Image
                   src={ASSETS.nockchainIcon}
                   alt="Nockchain"
+                  width={14}
+                  height={14}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -386,9 +393,11 @@ export default function ResultCard({
               overflow: "clip",
             }}
           >
-            <img
+            <Image
               src="/assets/chevron.svg"
               alt="Arrow"
+              width={16}
+              height={16}
               style={{
                 width: 16,
                 height: 16,
@@ -452,9 +461,11 @@ export default function ResultCard({
                 flexShrink: 0,
               }}
             >
-              <img
+              <Image
                 src={ASSETS.nockToken}
                 alt="NOCK"
+                width={40}
+                height={40}
                 style={{
                   width: 40,
                   height: 40,
@@ -476,9 +487,11 @@ export default function ResultCard({
                   background: "#fff",
                 }}
               >
-                <img
+                <Image
                   src={ASSETS.baseLogo}
                   alt="Base"
+                  width={14}
+                  height={14}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -762,9 +775,11 @@ export default function ResultCard({
                 background: "#fff",
               }}
             >
-              <img
+              <Image
                 src={ASSETS.baseLogo}
                 alt="Base"
+                width={14}
+                height={14}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -800,9 +815,11 @@ export default function ResultCard({
               }}
               title={copied ? "Copied!" : "Copy address"}
             >
-              <img
+              <Image
                 src="/assets/copy-icon.svg"
                 alt="Copy"
+                width={16}
+                height={16}
                 style={{
                   width: 16,
                   height: 16,
@@ -868,9 +885,11 @@ export default function ResultCard({
                 }}
                 title="View on explorer"
               >
-                <img
+                <Image
                   src="/assets/external-link-icon.svg"
                   alt="External link"
+                  width={16}
+                  height={16}
                   style={{
                     width: 16,
                     height: 16,
@@ -924,7 +943,8 @@ export default function ResultCard({
           {confirmDisabledReason && (
             <div
               style={{
-                color: theme.textSecondary,
+                color: theme.textPrimary,
+                opacity: 0.5,
                 fontFamily: "var(--font-inter), sans-serif",
                 fontSize: 13,
                 lineHeight: "18px",

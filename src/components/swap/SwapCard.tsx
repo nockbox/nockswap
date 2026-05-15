@@ -77,8 +77,7 @@ export default function SwapCard({
   });
 
   // Wallet connection
-  const { isInstalled, isConnected, isConnecting, connect, error: walletError } =
-    useWallet();
+  const { isInstalled, isConnected, isConnecting, connect } = useWallet();
 
   // Bridge configuration check
   const { isBridgeConfigured } = useBridge();
