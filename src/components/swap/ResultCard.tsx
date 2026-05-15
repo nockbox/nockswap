@@ -3,8 +3,9 @@
 import { useState } from "react";
 import {
   ASSETS,
+  bridgeFeeNicksCeil,
+  bridgeFeeNicksFloor,
   PROTOCOL_FEE_DISPLAY,
-  PROTOCOL_FEE_NICKS_PER_NOCK,
 } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -82,19 +83,16 @@ export default function ResultCard({
       bridgeStatus === "pending"
   );
 
-  // Calculate bridge fee for confirming state
-  // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
-  // Note: BigInt division automatically truncates (rounds down)
+  // Calculate bridge fee for confirming state.
   const calculateBridgeFee = (): string => {
     // Confirming flow has `preview`; success flow only has `result` (see page.tsx).
     const amountInNicks =
       preview?.amountInNicks ?? result?.amountInNicks ?? confirmingAmountInNicks;
     if (amountInNicks === undefined) return "0 NOCK";
-    const bridgeChunks =
+    const bridgeFeeNicks =
       flowDirection === "base_to_nock"
-        ? (amountInNicks + 65535n) / 65536n
-        : amountInNicks / 65536n;
-    const bridgeFeeNicks = bridgeChunks * PROTOCOL_FEE_NICKS_PER_NOCK;
+        ? bridgeFeeNicksCeil(amountInNicks)
+        : bridgeFeeNicksFloor(amountInNicks);
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
@@ -102,9 +100,7 @@ export default function ResultCard({
   // Calculate amount after bridge fee deduction
   const calculateAmountAfterBridgeFee = (): string => {
     if (flowDirection === "base_to_nock" && confirmingAmountInNicks !== undefined) {
-      const bridgeFeeNicks =
-        ((confirmingAmountInNicks + 65535n) / 65536n) *
-        PROTOCOL_FEE_NICKS_PER_NOCK;
+      const bridgeFeeNicks = bridgeFeeNicksCeil(confirmingAmountInNicks);
       const nockchainFeeNicks = confirmingNockchainFeeNicks ?? 0n;
       const amountAfterFees =
         confirmingAmountInNicks - bridgeFeeNicks - nockchainFeeNicks;
@@ -112,8 +108,7 @@ export default function ResultCard({
       return `${formatNOCK(amountNock)} NOCK`;
     }
     if (!preview) return totalNock;
-    const bridgeFeeNicks =
-      (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const bridgeFeeNicks = bridgeFeeNicksFloor(preview.amountInNicks);
     const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
     const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
     return `${formatNOCK(amountNock)} NOCK`;

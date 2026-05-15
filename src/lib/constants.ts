@@ -15,6 +15,25 @@ export function toWholeNockNicks(nicks: bigint): bigint {
   return (nicks / NICKS_PER_NOCK) * NICKS_PER_NOCK;
 }
 
+/** Nockchain -> Base bridge fee: whole-NOCK chunks, rounded down. */
+export function bridgeFeeNicksFloor(amountInNicks: bigint): bigint {
+  if (amountInNicks <= 0n) {
+    return 0n;
+  }
+  return (amountInNicks / NICKS_PER_NOCK) * PROTOCOL_FEE_NICKS_PER_NOCK;
+}
+
+/** Base -> Nock withdrawal bridge fee: whole-NOCK chunks, rounded up. */
+export function bridgeFeeNicksCeil(amountInNicks: bigint): bigint {
+  if (amountInNicks <= 0n) {
+    return 0n;
+  }
+  return (
+    ((amountInNicks + NICKS_PER_NOCK - 1n) / NICKS_PER_NOCK) *
+    PROTOCOL_FEE_NICKS_PER_NOCK
+  );
+}
+
 export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
 
 export const NOCK_COINGECKO_ID = "nockchain";

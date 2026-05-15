@@ -6,8 +6,9 @@ import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
 import {
   ASSETS,
+  bridgeFeeNicksCeil,
+  bridgeFeeNicksFloor,
   PROTOCOL_FEE_DISPLAY,
-  PROTOCOL_FEE_NICKS_PER_NOCK,
   NICKS_PER_NOCK,
 } from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
@@ -177,10 +178,9 @@ export default function Home() {
   // Convert nicks to NOCK
   const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
 
-  // Calculate amount after bridge fee deduction (~0.3%)
-  // Formula: roundDown(amountInNicks / 65536) * PROTOCOL_FEE_NICKS_PER_NOCK
+  // Calculate Nockchain -> Base amount after protocol bridge fee.
   const calculateAmountAfterBridgeFee = (amountInNicks: bigint): number => {
-    const bridgeFeeNicks = (amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const bridgeFeeNicks = bridgeFeeNicksFloor(amountInNicks);
     const amountAfterFee = amountInNicks - bridgeFeeNicks;
     return Number(amountAfterFee) / NOCK_TO_NICKS;
   };
@@ -190,8 +190,7 @@ export default function Home() {
     nockchainFeeNicks: bigint | null
   ): number => {
     const amountInNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
-    const bridgeFeeNicks =
-      ((amountInNicks + 65535n) / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const bridgeFeeNicks = bridgeFeeNicksCeil(amountInNicks);
     const amountAfterBridgeFee = amountInNicks - bridgeFeeNicks;
     const amountAfterAllFees =
       nockchainFeeNicks !== null

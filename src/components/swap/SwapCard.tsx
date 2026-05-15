@@ -71,7 +71,10 @@ export default function SwapCard({
     handleAmountBlur,
     fromSecondary,
     toSecondary,
-  } = useSwapForm({ nockPrice });
+  } = useSwapForm({
+    nockPrice,
+    bridgeFeeRounding: isNockchainToBase ? "floor" : "ceil",
+  });
 
   // Wallet connection
   const { isInstalled, isConnected, isConnecting, connect, error: walletError } =

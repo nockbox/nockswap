@@ -11,7 +11,7 @@ import {
   DEFAULT_FEE_PER_WORD,
 } from "@/lib/bridge";
 import {
-  PROTOCOL_FEE_NICKS_PER_NOCK,
+  bridgeFeeNicksCeil,
   toWholeNockNicks,
 } from "@/lib/constants";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
@@ -27,8 +27,7 @@ function parseDigestString(value: string, field: string): Digest {
 }
 
 function withdrawalBridgeFeeNicks(burnedAmountNicks: bigint): bigint {
-  const chunks = (burnedAmountNicks + 65535n) / 65536n;
-  return chunks * PROTOCOL_FEE_NICKS_PER_NOCK;
+  return bridgeFeeNicksCeil(burnedAmountNicks);
 }
 
 function parseNonNegativeBigInt(value: unknown): bigint | null {
