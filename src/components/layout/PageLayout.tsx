@@ -173,6 +173,53 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
           </Link>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "12px 14px",
+                background: theme.headerButtonBg,
+                border: `1px solid ${isDarkMode ? "#4a3e16" : "#e3d39a"}`,
+                borderRadius: 58,
+                color: theme.textPrimary,
+                whiteSpace: "nowrap",
+                boxShadow: isDarkMode
+                  ? "0 0 0 1px rgba(255, 196, 19, 0.18)"
+                  : "0 0 0 1px rgba(255, 196, 19, 0.14)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: "#ffc413",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  lineHeight: "14px",
+                }}
+              >
+                ↔
+              </span>
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  textAlign: "center",
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "16px",
+                }}
+              >
+                Now both ways
+              </span>
+            </div>
             <button
               onClick={() => setShowLearnMore(true)}
               style={{
@@ -187,9 +234,11 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                 color: theme.textPrimary,
               }}
             >
-              <img
+              <Image
                 src="/assets/information.svg"
                 alt="Info"
+                width={16}
+                height={16}
                 style={{ width: 16, height: 16 }}
               />
               <span

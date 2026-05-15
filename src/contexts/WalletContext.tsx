@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   NockchainProvider,
+  NOCK_TO_NICKS,
   WalletNotInstalledError,
   UserRejectedError,
   NoAccountError,
@@ -17,7 +18,6 @@ import {
 } from "@nockbox/iris-sdk";
 import type { Account, Address, SignTxResponse } from "@nockbox/iris-sdk";
 import type {
-  Note,
   Nicks,
   PbCom2Note,
   PbCom2RawTransaction,
@@ -26,8 +26,7 @@ import type {
 import * as wasm from "@nockbox/iris-sdk/wasm";
 import * as guard from "@nockbox/iris-wasm/iris_wasm.guard";
 
-// 1 NOCK = 65,536 nicks
-export const NOCK_TO_NICKS = 65_536;
+export { NOCK_TO_NICKS };
 
 function accountAddressString(account: Account): string {
   return String(account.address);
