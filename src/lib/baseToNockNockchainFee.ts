@@ -8,9 +8,6 @@ import type {
   TxEngineSettings,
 } from "@nockbox/iris-wasm";
 import {
-  DEFAULT_FEE_PER_WORD,
-} from "@/lib/bridge";
-import {
   bridgeFeeNicksCeil,
   toWholeNockNicks,
 } from "@/lib/constants";
@@ -114,15 +111,9 @@ function buildWithdrawalFeeSample(
   selectedNotes: Note[],
   bridgeSpend: SpendCondition,
   recipientSpend: SpendCondition,
-  netToRecipientNicks: bigint
+  netToRecipientNicks: bigint,
+  txEngineSettings: TxEngineSettings
 ): bigint {
-  const txEngineSettings: TxEngineSettings = {
-    tx_engine_version: 1,
-    tx_engine_patch: 1,
-    min_fee: "256" as Nicks,
-    cost_per_word: String(DEFAULT_FEE_PER_WORD) as Nicks,
-    witness_word_div: 4,
-  };
   const builder = new wasm.TxBuilder(txEngineSettings);
 
   const bridgeSpendClone = wasm.spendConditionFromProtobuf(
@@ -176,6 +167,7 @@ export interface EstimateBaseToNockNockchainFeeParams {
   recipientNockAddress: string;
   grpcEndpoint: string;
   bridgeNetwork: BridgeNetworkConfig;
+  txEngineSettings: TxEngineSettings;
 }
 
 /**
@@ -190,7 +182,12 @@ export interface EstimateBaseToNockNockchainFeeParams {
 export async function estimateBaseToNockNockchainFeeNicks(
   params: EstimateBaseToNockNockchainFeeParams
 ): Promise<bigint> {
-  const { recipientNockAddress, grpcEndpoint, bridgeNetwork } = params;
+  const {
+    recipientNockAddress,
+    grpcEndpoint,
+    bridgeNetwork,
+    txEngineSettings,
+  } = params;
   let { burnedAmountNicks } = params;
   burnedAmountNicks = toWholeNockNicks(burnedAmountNicks);
   if (burnedAmountNicks <= 0n) {
@@ -303,7 +300,8 @@ export async function estimateBaseToNockNockchainFeeNicks(
       selected,
       bridgeSpend,
       recipientSpend,
-      net
+      net,
+      txEngineSettings
     );
     if (nextFee === feeNicks) {
       return feeNicks;

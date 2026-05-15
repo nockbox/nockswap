@@ -16,7 +16,6 @@ import {
 } from "./bridgeNetworkConfig";
 
 export const BRIDGE_NOTE_KEY = "bridge";
-export const DEFAULT_FEE_PER_WORD = 1n << 14n;
 
 export { evmAddressToBelts, verifyBeltEncoding } from "@nockbox/iris-sdk";
 

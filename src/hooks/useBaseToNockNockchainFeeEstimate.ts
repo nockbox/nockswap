@@ -5,6 +5,7 @@ import { useChainId } from "wagmi";
 import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { estimateBaseToNockNockchainFeeNicks } from "@/lib/baseToNockNockchainFee";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
+import { bridgeOptionsFromActivationHeights } from "@/lib/bridge";
 import { NICKS_PER_NOCK } from "@/lib/constants";
 import { resolveNockchainGrpcUrl } from "@/lib/nockchainGrpc";
 import { formatNOCK } from "@/lib/utils";
@@ -19,7 +20,7 @@ export function useBaseToNockNockchainFeeEstimate(
   amountNock: number | null,
   destinationNockAddress: string | null
 ): { display: string; feeNicks: bigint | null; loading: boolean } {
-  const { grpcEndpoint } = useWallet();
+  const { grpcEndpoint, txEngineActivationHeights } = useWallet();
   const chainId = useChainId();
   const bridgeNetwork = useMemo(
     () => getBridgeNetworkConfig(chainId),
@@ -40,6 +41,7 @@ export function useBaseToNockNockchainFeeEstimate(
     destTrimmed.length > 0 &&
     isNockAddress(destTrimmed) &&
     Boolean(bridgeNetwork) &&
+    Boolean(txEngineActivationHeights) &&
     Boolean(grpcUrl);
 
   useLayoutEffect(() => {
@@ -57,6 +59,7 @@ export function useBaseToNockNockchainFeeEstimate(
       !destTrimmed ||
       !isNockAddress(destTrimmed) ||
       !bridgeNetwork ||
+      !txEngineActivationHeights ||
       !grpcUrl
     ) {
       setDisplay("—");
@@ -67,6 +70,9 @@ export function useBaseToNockNockchainFeeEstimate(
     let cancelled = false;
 
     const burnedAmountNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
+    const txEngineSettings = bridgeOptionsFromActivationHeights(
+      txEngineActivationHeights
+    ).txEngineSettings;
 
     (async () => {
       try {
@@ -75,6 +81,7 @@ export function useBaseToNockNockchainFeeEstimate(
           recipientNockAddress: destTrimmed,
           grpcEndpoint: grpcUrl,
           bridgeNetwork,
+          txEngineSettings,
         });
         if (!cancelled) {
           const nock = Number(fee) / NOCK_TO_NICKS;
@@ -96,7 +103,13 @@ export function useBaseToNockNockchainFeeEstimate(
     return () => {
       cancelled = true;
     };
-  }, [amountNock, destTrimmed, grpcUrl, bridgeNetwork]);
+  }, [
+    amountNock,
+    destTrimmed,
+    grpcUrl,
+    bridgeNetwork,
+    txEngineActivationHeights,
+  ]);
 
   return { display, feeNicks, loading };
 }
