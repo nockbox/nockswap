@@ -568,7 +568,7 @@ export default function ResultCard({
                   letterSpacing: isMobile ? 0.14 : 0.15,
                 }}
               >
-                Nockchain fee (estimate)
+                Nockchain fee (best effort)
               </span>
               <span
                 style={{
