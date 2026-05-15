@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useChainId } from "wagmi";
 import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { estimateBaseToNockNockchainFeeNicks } from "@/lib/baseToNockNockchainFee";
+import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 import { NICKS_PER_NOCK } from "@/lib/constants";
 import { resolveNockchainGrpcUrl } from "@/lib/nockchainGrpc";
 import { formatNOCK } from "@/lib/utils";
@@ -10,7 +12,7 @@ import { isNockAddress } from "@/lib/validators";
 
 /**
  * Live estimate of the Nockchain network fee for Base→Nock when a gRPC URL is available
- * (Iris connect or `NEXT_PUBLIC_NOCKCHAIN_GRPC_URL`).
+ * from Iris connect or the active bridge network config.
  * Uses public balance-by-first-name data (same first-name as the bridge multisig).
  */
 export function useBaseToNockNockchainFeeEstimate(
@@ -18,7 +20,15 @@ export function useBaseToNockNockchainFeeEstimate(
   destinationNockAddress: string | null
 ): { display: string; feeNicks: bigint | null; loading: boolean } {
   const { grpcEndpoint } = useWallet();
-  const grpcUrl = resolveNockchainGrpcUrl(grpcEndpoint);
+  const chainId = useChainId();
+  const bridgeNetwork = useMemo(
+    () => getBridgeNetworkConfig(chainId),
+    [chainId]
+  );
+  const grpcUrl = resolveNockchainGrpcUrl(
+    grpcEndpoint,
+    bridgeNetwork?.nockchainGrpcEndpoint
+  );
   const [display, setDisplay] = useState("—");
   const [feeNicks, setFeeNicks] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,6 +39,7 @@ export function useBaseToNockNockchainFeeEstimate(
     amountNock > 0 &&
     destTrimmed.length > 0 &&
     isNockAddress(destTrimmed) &&
+    Boolean(bridgeNetwork) &&
     Boolean(grpcUrl);
 
   useLayoutEffect(() => {
@@ -45,6 +56,7 @@ export function useBaseToNockNockchainFeeEstimate(
       amountNock <= 0 ||
       !destTrimmed ||
       !isNockAddress(destTrimmed) ||
+      !bridgeNetwork ||
       !grpcUrl
     ) {
       setDisplay("—");
@@ -62,6 +74,7 @@ export function useBaseToNockNockchainFeeEstimate(
           burnedAmountNicks,
           recipientNockAddress: destTrimmed,
           grpcEndpoint: grpcUrl,
+          bridgeNetwork,
         });
         if (!cancelled) {
           const nock = Number(fee) / NOCK_TO_NICKS;
@@ -83,7 +96,7 @@ export function useBaseToNockNockchainFeeEstimate(
     return () => {
       cancelled = true;
     };
-  }, [amountNock, destTrimmed, grpcUrl]);
+  }, [amountNock, destTrimmed, grpcUrl, bridgeNetwork]);
 
   return { display, feeNicks, loading };
 }

@@ -1,6 +1,7 @@
 import { base58 } from "@scure/base";
 import { encodeFunctionData, isAddress, parseUnits } from "viem";
 import type { Digest } from "@nockbox/iris-wasm";
+import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 /** Matches `Nock.decimals()` on-chain. */
 export const NOCK_TOKEN_DECIMALS = 16;
@@ -20,9 +21,8 @@ export const nockBurnAbi = [
 
 const nockAbi = nockBurnAbi;
 
-export function getNockTokenAddress(): string | undefined {
-  const v = process.env.NEXT_PUBLIC_NOCK_TOKEN_ADDRESS?.trim();
-  return v && v.length > 0 ? v : undefined;
+export function getNockTokenAddress(chainId: number | undefined): string | undefined {
+  return getBridgeNetworkConfig(chainId)?.nockTokenAddress;
 }
 
 function bytesToHex(bytes: Uint8Array): `0x${string}` {
@@ -77,7 +77,7 @@ export function encodeNockBurnCalldata(params: {
 export function assertValidNockTokenAddress(address: string): void {
   const a = address.trim();
   if (!isAddress(a, { strict: false })) {
-    throw new Error("Invalid NEXT_PUBLIC_NOCK_TOKEN_ADDRESS");
+    throw new Error("Invalid configured Nock token address");
   }
 }
 

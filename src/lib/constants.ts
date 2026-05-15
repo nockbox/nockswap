@@ -1,9 +1,11 @@
+import { NOCK_TO_NICKS } from "@nockbox/iris-sdk";
+
 // Bridge fee: 195 nicks per 65_536 nicks (1 NOCK). Slightly under 0.3%; integer nicks avoids float drift.
 export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
 export const PROTOCOL_FEE_DISPLAY = "0.3%";
 
-/** 1 NOCK = 2^16 nicks. Fee uses whole-nock chunks of this size with PROTOCOL_FEE_NICKS_PER_NOCK. */
-export const NICKS_PER_NOCK = 65_536n;
+/** 1 NOCK = 2^16 nicks (`NOCK_TO_NICKS` from @nockbox/iris-sdk). */
+export const NICKS_PER_NOCK = BigInt(NOCK_TO_NICKS);
 
 /** Floor nicks to a whole-NOCK boundary so bridge fee math matches on-chain integer semantics. */
 export function toWholeNockNicks(nicks: bigint): bigint {
@@ -14,19 +16,6 @@ export function toWholeNockNicks(nicks: bigint): bigint {
 }
 
 export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
-
-// Zorp Bridge 3-of-5 Multisig Configuration
-export const ZORP_BRIDGE_THRESHOLD = 3;
-export const ZORP_BRIDGE_ADDRESSES: string[] = [
-  "AD6Mw1QUnPUrnVpyj2gW2jT6Jd6WsuZQmPn79XpZoFEocuvV12iDkvh", // Zorp #1
-  "6KrZT5hHLY1fva9AUDeGtZu5Jznm4RDLYfjcGjuU49nWoNym5ZeX5X5", // Zorp #2
-  "CDLzgKWAKFXYABkuQaMwbttDSTDMh3Wy2Eoq2XiArsyxn7vScNHupBb", // Pero
-  "7E47xYNVEyt7jGmLsiChUHnyw88AfBvzJfXfEQkPmMo2ZWsdcPudwmV", // Nockbox
-  "3xSyK6RQUaYzE8YDUamkpKRHALxaYo8E7eppawwE4sP35c3PASc6koq", // SWPS
-];
-// Expected lock root for bridge outputs (derived from 3-of-5 multisig above)
-export const ZORP_BRIDGE_LOCK_ROOT =
-  "AcsPkuhXQoGeEsF91yynpm1kcW17PQ2Z1MEozgx7YnDPkZwrtzLuuqd";
 
 export const NOCK_COINGECKO_ID = "nockchain";
 

@@ -2,18 +2,15 @@
  * Nockchain gRPC URL for browser-side balance/tx helpers (iris-wasm `GrpcClient`).
  *
  * Iris supplies an endpoint on connect; for Base→Nock flows users may only use EVM,
- * so we also support a public read URL from env.
+ * so a network config may also provide a public read URL for fee estimates.
  */
 export function resolveNockchainGrpcUrl(
-  walletGrpcEndpoint: string | null | undefined
+  walletGrpcEndpoint: string | null | undefined,
+  configuredGrpcEndpoint?: string
 ): string | null {
-  const fromEnv =
-    typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_NOCKCHAIN_GRPC_URL?.trim()
-      : undefined;
-  if (fromEnv) {
-    return fromEnv;
-  }
   const fromWallet = walletGrpcEndpoint?.trim();
-  return fromWallet || null;
+  if (fromWallet) {
+    return fromWallet;
+  }
+  return configuredGrpcEndpoint?.trim() || null;
 }

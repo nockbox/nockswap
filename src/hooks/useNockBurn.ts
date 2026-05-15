@@ -1,6 +1,6 @@
 "use client";
 
-import { useWriteContract } from "wagmi";
+import { useChainId, useWriteContract } from "wagmi";
 import {
   assertValidNockTokenAddress,
   burnLockRootFromRecipientPkh,
@@ -11,15 +11,16 @@ import {
 
 export function useNockBurn() {
   const { writeContractAsync, isPending } = useWriteContract();
+  const chainId = useChainId();
 
   const burnNock = async (
     amountNock: number,
     destinationNockAddress: string
   ): Promise<string> => {
-    const nockAddress = getNockTokenAddress();
+    const nockAddress = getNockTokenAddress(chainId);
     if (!nockAddress) {
       throw new Error(
-        "Set NEXT_PUBLIC_NOCK_TOKEN_ADDRESS to the Nock ERC-20 contract on your target chain."
+        `No Nock token configured for connected chain ${chainId}.`
       );
     }
     assertValidNockTokenAddress(nockAddress);

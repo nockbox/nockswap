@@ -9,33 +9,36 @@ import type {
 } from "@nockbox/iris-sdk";
 import type { Nicks, TxEngineSettings } from "@nockbox/iris-sdk/wasm";
 import { getLatestTxEngineSettings, isBridgeConfigured as irisSdkIsBridgeConfigured } from "@nockbox/iris-sdk";
+import { MIN_BRIDGE_AMOUNT_NOCK, NICKS_PER_NOCK } from "./constants";
 import {
-  MIN_BRIDGE_AMOUNT_NOCK,
-  ZORP_BRIDGE_ADDRESSES,
-  ZORP_BRIDGE_LOCK_ROOT,
-  ZORP_BRIDGE_THRESHOLD,
-} from "./constants";
-
-const NOCK_TO_NICKS = 65_536n;
+  getBridgeNetworkConfig,
+  type BridgeNetworkConfig,
+} from "./bridgeNetworkConfig";
 
 export const BRIDGE_NOTE_KEY = "bridge";
-
-export { ZORP_BRIDGE_THRESHOLD, ZORP_BRIDGE_ADDRESSES, ZORP_BRIDGE_LOCK_ROOT };
+export const DEFAULT_FEE_PER_WORD = 1n << 14n;
 
 export { evmAddressToBelts, verifyBeltEncoding } from "@nockbox/iris-sdk";
 
-export function getZorpBridgeConfig(): BridgeConfig {
+function sdkBridgeConfigFromNetwork(config: BridgeNetworkConfig): BridgeConfig {
   return {
-    threshold: ZORP_BRIDGE_THRESHOLD,
-    addresses: [...ZORP_BRIDGE_ADDRESSES],
+    threshold: config.bridgeThreshold,
+    addresses: [...config.bridgeSignerPkhs],
     noteDataKey: BRIDGE_NOTE_KEY,
     chainTag: "65736162",
     versionTag: "0",
     minAmountNicks: String(
-      BigInt(MIN_BRIDGE_AMOUNT_NOCK) * NOCK_TO_NICKS
+      BigInt(MIN_BRIDGE_AMOUNT_NOCK) * NICKS_PER_NOCK
     ) as Nicks,
-    expectedLockRoot: ZORP_BRIDGE_LOCK_ROOT,
+    expectedLockRoot: config.bridgeLockRoot,
   };
+}
+
+export function getZorpBridgeConfig(
+  chainId: number | undefined
+): BridgeConfig | undefined {
+  const config = getBridgeNetworkConfig(chainId);
+  return config ? sdkBridgeConfigFromNetwork(config) : undefined;
 }
 
 /** Bridge tx build/validate options using the wallet-supplied activation map (from `connect`). */
@@ -47,6 +50,7 @@ export function bridgeOptionsFromActivationHeights(
   };
 }
 
-export function isBridgeConfigured(): boolean {
-  return irisSdkIsBridgeConfigured(getZorpBridgeConfig());
+export function isBridgeConfigured(chainId: number | undefined): boolean {
+  const config = getZorpBridgeConfig(chainId);
+  return config ? irisSdkIsBridgeConfigured(config) : false;
 }

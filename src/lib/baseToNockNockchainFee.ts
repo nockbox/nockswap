@@ -8,8 +8,6 @@ import type {
   TxEngineSettings,
 } from "@nockbox/iris-wasm";
 import {
-  ZORP_BRIDGE_THRESHOLD,
-  ZORP_BRIDGE_ADDRESSES,
   DEFAULT_FEE_PER_WORD,
 } from "@/lib/bridge";
 import {
@@ -17,6 +15,7 @@ import {
   toWholeNockNicks,
 } from "@/lib/constants";
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
+import type { BridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 function parseDigestString(value: string, field: string): Digest {
   const trimmed = value.trim();
@@ -142,6 +141,7 @@ export interface EstimateBaseToNockNockchainFeeParams {
   burnedAmountNicks: bigint;
   recipientNockAddress: string;
   grpcEndpoint: string;
+  bridgeNetwork: BridgeNetworkConfig;
 }
 
 /**
@@ -155,7 +155,8 @@ export interface EstimateBaseToNockNockchainFeeParams {
 export async function estimateBaseToNockNockchainFeeNicks(
   params: EstimateBaseToNockNockchainFeeParams
 ): Promise<bigint> {
-  let { burnedAmountNicks, recipientNockAddress, grpcEndpoint } = params;
+  const { recipientNockAddress, grpcEndpoint, bridgeNetwork } = params;
+  let { burnedAmountNicks } = params;
   burnedAmountNicks = toWholeNockNicks(burnedAmountNicks);
   if (burnedAmountNicks <= 0n) {
     throw new Error("Burn amount must be at least 1 whole NOCK in nicks.");
@@ -167,8 +168,10 @@ export async function estimateBaseToNockNockchainFeeNicks(
   }
 
   const bridgePkh = wasm.pkhNew(
-    BigInt(ZORP_BRIDGE_THRESHOLD),
-    ZORP_BRIDGE_ADDRESSES.map((a) => parseDigestString(a, "bridge address"))
+    BigInt(bridgeNetwork.bridgeThreshold),
+    bridgeNetwork.bridgeSignerPkhs.map((a) =>
+      parseDigestString(a, "bridge address")
+    )
   );
   const bridgeSpend = wasm.spendConditionNewPkh(bridgePkh);
   const bridgeFirstName = wasm.spendConditionFirstName(bridgeSpend);

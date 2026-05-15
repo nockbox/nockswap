@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
+import { useChainId } from "wagmi";
 import {
   assertValidBridgeTransaction,
   buildBridgeTransaction,
@@ -29,10 +30,8 @@ import {
 import { isEvmAddress } from "@/lib/validators";
 import {
   MIN_BRIDGE_AMOUNT_NOCK,
-  ZORP_BRIDGE_ADDRESSES,
-  ZORP_BRIDGE_LOCK_ROOT,
-  ZORP_BRIDGE_THRESHOLD,
 } from "@/lib/constants";
+import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 export type BridgeStatus =
   | "idle"
@@ -124,6 +123,7 @@ function parseDigestString(value: string, field: string): Digest {
 }
 
 export function useBridge(): UseBridgeReturn {
+  const chainId = useChainId();
   const {
     isConnected,
     address,
@@ -144,7 +144,11 @@ export function useBridge(): UseBridgeReturn {
   // Store prepared transaction for confirmation step
   const preparedTxRef = useRef<PreparedTransaction | null>(null);
 
-  const isBridgeConfigured = checkBridgeConfigured();
+  const activeBridgeNetwork = useMemo(
+    () => getBridgeNetworkConfig(chainId),
+    [chainId]
+  );
+  const isBridgeConfigured = checkBridgeConfigured(chainId);
 
   const validateDestination = useCallback(
     (destinationAddress: string): { valid: boolean; error?: string } => {
@@ -221,7 +225,7 @@ export function useBridge(): UseBridgeReturn {
       }
 
       if (!isBridgeConfigured) {
-        throw new Error("Bridge not configured");
+        throw new Error(`Bridge not configured for connected chain ${chainId}`);
       }
 
       setStatus("preparing");
@@ -248,7 +252,10 @@ export function useBridge(): UseBridgeReturn {
         await initWasm();
         const wasm = await import("@nockbox/iris-sdk/wasm");
 
-        const bridgeConfig = getZorpBridgeConfig();
+        const bridgeConfig = getZorpBridgeConfig(chainId);
+        if (!bridgeConfig || !activeBridgeNetwork) {
+          throw new Error(`Bridge not configured for connected chain ${chainId}`);
+        }
         const bridgeOptions = bridgeOptionsFromActivationHeights(
           txEngineActivationHeights
         );
@@ -377,14 +384,14 @@ export function useBridge(): UseBridgeReturn {
         // Build transaction
         {
           const testBridgePkh = wasm.pkhNew(
-            BigInt(ZORP_BRIDGE_THRESHOLD),
-            ZORP_BRIDGE_ADDRESSES.map((a) =>
+            BigInt(activeBridgeNetwork.bridgeThreshold),
+            activeBridgeNetwork.bridgeSignerPkhs.map((a) =>
               parseDigestString(a, "bridge address")
             )
           );
           const testSpendCondition = wasm.spendConditionNewPkh(testBridgePkh);
           const testLockRoot = wasm.lockHash(testSpendCondition);
-          if (testLockRoot !== ZORP_BRIDGE_LOCK_ROOT) {
+          if (testLockRoot !== activeBridgeNetwork.bridgeLockRoot) {
             throw new Error(
               `Bridge address mismatch. Check bridge configuration.`
             );
@@ -468,8 +475,10 @@ export function useBridge(): UseBridgeReturn {
     [
       isConnected,
       address,
+      chainId,
       grpcEndpoint,
       txEngineActivationHeights,
+      activeBridgeNetwork,
       isBridgeConfigured,
       validateDestination,
     ]
@@ -521,7 +530,10 @@ export function useBridge(): UseBridgeReturn {
       await initWasm();
       const wasm = await import("@nockbox/iris-sdk/wasm");
 
-      const bridgeConfig = getZorpBridgeConfig();
+      const bridgeConfig = getZorpBridgeConfig(chainId);
+      if (!bridgeConfig) {
+        throw new Error(`Bridge not configured for connected chain ${chainId}`);
+      }
       const bridgeOptions = bridgeOptionsFromActivationHeights(
         txEngineActivationHeights
       );
@@ -639,7 +651,7 @@ export function useBridge(): UseBridgeReturn {
     } finally {
       confirmInFlightRef.current = false;
     }
-  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights]);
+  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights, chainId]);
 
   return {
     // State
