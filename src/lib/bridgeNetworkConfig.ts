@@ -117,3 +117,8 @@ export function getBridgeNetworkConfig(
 ): BridgeNetworkConfig | undefined {
   return getBridgeNetworkConfigs().find((config) => config.chainId === chainId);
 }
+
+export function getPreferredBridgeNetworkConfig(): BridgeNetworkConfig | undefined {
+  const configs = getBridgeNetworkConfigs();
+  return configs.find((config) => config.id === "mainnet") ?? configs[0];
+}

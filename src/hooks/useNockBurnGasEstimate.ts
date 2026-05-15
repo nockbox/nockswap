@@ -10,10 +10,10 @@ import {
 } from "wagmi";
 import {
   burnLockRootFromRecipientPkh,
-  getNockTokenAddress,
   nockBurnAbi,
   nockAmountToTokenUnits,
 } from "@/lib/nockToken";
+import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 function formatEthApprox(wei: bigint): string {
   const s = formatUnits(wei, 18);
@@ -31,13 +31,24 @@ function formatEthApprox(wei: bigint): string {
  */
 export function useNockBurnGasEstimate(
   amountNock: number | null,
-  destinationNockAddress: string | null
+  destinationNockAddress: string | null,
+  expectedChainId?: number
 ): {
   networkFeeDisplay: string;
 } {
   const { address } = useAccount();
   const chainId = useChainId();
-  const tokenAddr = getNockTokenAddress(chainId);
+  const expectedNetwork = useMemo(
+    () =>
+      expectedChainId === undefined
+        ? getBridgeNetworkConfig(chainId)
+        : getBridgeNetworkConfig(expectedChainId),
+    [chainId, expectedChainId]
+  );
+  const tokenAddr =
+    expectedNetwork && chainId === expectedNetwork.chainId
+      ? expectedNetwork.nockTokenAddress
+      : undefined;
   const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>();
 
   const amountWei = useMemo(() => {
@@ -106,6 +117,9 @@ export function useNockBurnGasEstimate(
   });
 
   const networkFeeDisplay = useMemo(() => {
+    if (expectedNetwork && chainId !== expectedNetwork.chainId) {
+      return `Switch to ${expectedNetwork.label}`;
+    }
     if (!estimateEnabled) return "—";
     if (gasLoading || feesLoading) return "Estimating…";
     if (gasLimit === undefined || gasLimit === 0n) return "—";
@@ -114,6 +128,8 @@ export function useNockBurnGasEstimate(
     return formatEthApprox(gasLimit * maxFee);
   }, [
     estimateEnabled,
+    expectedNetwork,
+    chainId,
     gasLoading,
     feesLoading,
     gasLimit,

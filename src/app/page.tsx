@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
@@ -18,6 +18,10 @@ import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { truncateAddress, formatNOCK } from "@/lib/utils";
 import { isEvmWalletUserRejection } from "@/lib/evmWalletErrors";
 import { transactionExplorerUrl } from "@/lib/blockExplorer";
+import {
+  getBridgeNetworkConfig,
+  getPreferredBridgeNetworkConfig,
+} from "@/lib/bridgeNetworkConfig";
 import { useChainId } from "wagmi";
 
 type ResultState =
@@ -35,6 +39,7 @@ type ResultState =
       txHash: string;
       amountNock: number;
       destinationNockAddress: string;
+      chainId: number;
       burnNetworkFeeDisplay: string;
       nockchainNetworkFeeDisplay: string;
       nockchainFeeNicks: bigint | null;
@@ -54,6 +59,11 @@ export default function Home() {
   const chainId = useChainId();
   const { confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
   const { burnNock, isBurning: isBurnPending } = useNockBurn();
+  const expectedBurnNetwork = useMemo(
+    () => getBridgeNetworkConfig(chainId) ?? getPreferredBridgeNetworkConfig(),
+    [chainId]
+  );
+  const expectedBurnChainId = expectedBurnNetwork?.chainId;
   const burnGasAmountNock =
     resultState.type === "confirming_burn" ? resultState.amountNock : null;
   const burnDestinationNockAddress =
@@ -61,7 +71,11 @@ export default function Home() {
       ? resultState.destinationNockAddress
       : null;
   const { networkFeeDisplay: burnNetworkFeeDisplay } =
-    useNockBurnGasEstimate(burnGasAmountNock, burnDestinationNockAddress);
+    useNockBurnGasEstimate(
+      burnGasAmountNock,
+      burnDestinationNockAddress,
+      expectedBurnChainId
+    );
   const {
     display: nockchainNetworkFeeDisplay,
     feeNicks: nockchainFeeNicksEstimate,
@@ -122,10 +136,15 @@ export default function Home() {
       nockchainFeeNicks: nockchainFeeNicksEstimate,
     };
     try {
-      const txHash = await burnNock(amountNock, destinationNockAddress);
+      const txHash = await burnNock(
+        amountNock,
+        destinationNockAddress,
+        expectedBurnChainId
+      );
       setResultState({
         type: "base_to_nock_success",
         txHash,
+        chainId: expectedBurnChainId ?? chainId,
         ...sharedBurnResultData,
       });
     } catch (err) {
@@ -271,7 +290,7 @@ export default function Home() {
                 }
                 transactionUrl={
                   resultState.type === "base_to_nock_success"
-                    ? (transactionExplorerUrl(chainId, resultState.txHash) ?? undefined)
+                    ? (transactionExplorerUrl(resultState.chainId, resultState.txHash) ?? undefined)
                     : undefined
                 }
                 onHomeClick={handleHomeClick}
