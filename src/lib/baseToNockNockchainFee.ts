@@ -31,6 +31,41 @@ function withdrawalBridgeFeeNicks(burnedAmountNicks: bigint): bigint {
   return chunks * PROTOCOL_FEE_NICKS_PER_NOCK;
 }
 
+function parseNonNegativeBigInt(value: unknown): bigint | null {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : null;
+  }
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = BigInt(value);
+      return parsed >= 0n ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object" && value !== null && "value" in value) {
+    return parseNonNegativeBigInt((value as { value?: unknown }).value);
+  }
+  return null;
+}
+
+function balanceSnapshotHeight(balance: unknown): bigint | null {
+  return parseNonNegativeBigInt((balance as { height?: unknown })?.height);
+}
+
+function noteOriginPage(note: Note): bigint | null {
+  if ("origin_page" in note) {
+    return parseNonNegativeBigInt(note.origin_page);
+  }
+  if ("inner" in note) {
+    return parseNonNegativeBigInt(note.inner?.origin_page);
+  }
+  return null;
+}
+
 function noteNameKey(note: Note): string {
   const n = note.name as { first?: string; last?: string } | undefined;
   const first = n?.first ?? "";
@@ -146,8 +181,9 @@ export interface EstimateBaseToNockNockchainFeeParams {
 
 /**
  * Estimates the Nockchain transaction fee for a Base→Nock payout by mirroring bridge relayer logic:
- * notes under the bridge multisig first-name, smallest-assets / lexicographic name ordering,
- * greedy coverage of spendable amount (burned − ceil bridge fee), then fee from TxBuilder.
+ * notes under the bridge multisig first-name, safe-origin filtering using the endpoint's balance
+ * snapshot height, smallest-assets / lexicographic name ordering, greedy coverage of spendable
+ * amount (burned − ceil bridge fee), then fee from TxBuilder.
  *
  * Multisig inputs are modeled **unsigned**: fee uses the engine’s missing-PKH-signature heuristic (see
  * `buildWithdrawalFeeSample`), not real 3-of-5 witness nouns.
@@ -181,6 +217,20 @@ export async function estimateBaseToNockNockchainFeeNicks(
 
   const grpcClient = new wasm.GrpcClient(grpcEndpoint);
   const balance = await grpcClient.getBalanceByFirstName(bridgeFirstName);
+  const snapshotHeight = balanceSnapshotHeight(balance);
+  if (snapshotHeight === null) {
+    throw new Error(
+      "Bridge inventory estimate unavailable: endpoint did not return a balance snapshot height."
+    );
+  }
+
+  const safeTip =
+    snapshotHeight - BigInt(bridgeNetwork.nockchainConfirmationDepth);
+  if (safeTip < 0n) {
+    throw new Error(
+      "Bridge inventory estimate unavailable: confirmation depth exceeds current Nockchain height."
+    );
+  }
 
   const rawNotes: Note[] = [];
   if (balance?.notes) {
@@ -196,7 +246,30 @@ export async function estimateBaseToNockNockchainFeeNicks(
     throw new Error("No bridge notes returned for this endpoint.");
   }
 
-  const sorted = sortBridgeNotesForWithdrawal(rawNotes);
+  let missingOriginPageCount = 0;
+  let unsafeOriginPageCount = 0;
+  const safeNotes = rawNotes.filter((note) => {
+    const originPage = noteOriginPage(note);
+    if (originPage === null) {
+      missingOriginPageCount += 1;
+      return false;
+    }
+    if (originPage > safeTip) {
+      unsafeOriginPageCount += 1;
+      return false;
+    }
+    return true;
+  });
+
+  if (safeNotes.length === 0) {
+    const reason =
+      missingOriginPageCount === rawNotes.length
+        ? "all returned bridge notes are missing origin_page"
+        : "all returned bridge notes are newer than the configured confirmation depth";
+    throw new Error(`Bridge inventory estimate unavailable: ${reason}.`);
+  }
+
+  const sorted = sortBridgeNotesForWithdrawal(safeNotes);
   const withdrawalFee = withdrawalBridgeFeeNicks(burnedAmountNicks);
   const spendable = burnedAmountNicks - withdrawalFee;
   if (spendable <= 0n) {
@@ -206,6 +279,13 @@ export async function estimateBaseToNockNockchainFeeNicks(
   const selected = selectNotesCoveringSpendable(sorted, spendable);
   const perNoteAssetsNicks = selected.map((n) => String(BigInt(n.assets)));
   console.log("[baseToNockNockchainFee] fee estimate coin selection", {
+    snapshotHeight: snapshotHeight.toString(),
+    confirmationDepth: bridgeNetwork.nockchainConfirmationDepth,
+    safeTip: safeTip.toString(),
+    rawNoteCount: rawNotes.length,
+    safeNoteCount: safeNotes.length,
+    missingOriginPageCount,
+    unsafeOriginPageCount,
     count: selected.length,
     perNoteAssetsNicks,
     perNoteAssetsNock: perNoteAssetsNicks.map(

@@ -11,6 +11,7 @@ export interface BridgeNetworkConfig {
   bridgeSignerPkhs: string[];
   bridgeThreshold: number;
   bridgeLockRoot: string;
+  nockchainConfirmationDepth: number;
   nockchainGrpcEndpoint?: string;
 }
 
@@ -21,6 +22,7 @@ interface BridgeNetworkEnv {
   bridgeSignerPkhs?: string;
   bridgeThreshold?: string;
   bridgeLockRoot?: string;
+  nockchainConfirmationDepth?: string;
   nockchainGrpcEndpoint?: string;
 }
 
@@ -36,6 +38,13 @@ function parsePositiveInteger(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function parseNonNegativeInteger(value: string | undefined): number | undefined {
+  const raw = nonEmpty(value);
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 function parseList(value: string | undefined): string[] {
   const raw = nonEmpty(value);
   if (!raw) return [];
@@ -48,7 +57,8 @@ function parseList(value: string | undefined): string[] {
 function buildBridgeNetworkConfig(
   id: BridgeNetworkId,
   label: string,
-  env: BridgeNetworkEnv
+  env: BridgeNetworkEnv,
+  defaults?: { nockchainConfirmationDepth?: number }
 ): BridgeNetworkConfig | undefined {
   const chainId = parsePositiveInteger(env.chainId);
   const nockTokenAddress = nonEmpty(env.nockTokenAddress);
@@ -56,6 +66,10 @@ function buildBridgeNetworkConfig(
   const bridgeSignerPkhs = parseList(env.bridgeSignerPkhs);
   const bridgeThreshold = parsePositiveInteger(env.bridgeThreshold);
   const bridgeLockRoot = nonEmpty(env.bridgeLockRoot);
+  const nockchainConfirmationDepth =
+    parseNonNegativeInteger(env.nockchainConfirmationDepth) ??
+    defaults?.nockchainConfirmationDepth ??
+    0;
 
   if (
     !chainId ||
@@ -77,6 +91,7 @@ function buildBridgeNetworkConfig(
     bridgeSignerPkhs,
     bridgeThreshold,
     bridgeLockRoot,
+    nockchainConfirmationDepth,
     nockchainGrpcEndpoint: nonEmpty(env.nockchainGrpcEndpoint),
   };
 }
@@ -95,9 +110,11 @@ export function getBridgeNetworkConfigs(): BridgeNetworkConfig[] {
         process.env.NEXT_PUBLIC_BRIDGE_MAINNET_THRESHOLD,
       bridgeLockRoot:
         process.env.NEXT_PUBLIC_BRIDGE_MAINNET_LOCK_ROOT,
+      nockchainConfirmationDepth:
+        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCKCHAIN_CONFIRMATION_DEPTH,
       nockchainGrpcEndpoint:
         process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCKCHAIN_GRPC_URL,
-    }),
+    }, { nockchainConfirmationDepth: 100 }),
     buildBridgeNetworkConfig("bridge-dev", "Bridge dev", {
       chainId: process.env.NEXT_PUBLIC_BRIDGE_DEV_CHAIN_ID,
       nockTokenAddress: process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCK_TOKEN_ADDRESS,
@@ -106,6 +123,8 @@ export function getBridgeNetworkConfigs(): BridgeNetworkConfig[] {
       bridgeSignerPkhs: process.env.NEXT_PUBLIC_BRIDGE_DEV_SIGNER_PKHS,
       bridgeThreshold: process.env.NEXT_PUBLIC_BRIDGE_DEV_THRESHOLD,
       bridgeLockRoot: process.env.NEXT_PUBLIC_BRIDGE_DEV_LOCK_ROOT,
+      nockchainConfirmationDepth:
+        process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCKCHAIN_CONFIRMATION_DEPTH,
       nockchainGrpcEndpoint:
         process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCKCHAIN_GRPC_URL,
     }),
