@@ -8,7 +8,14 @@ const DEFAULT_LOCAL_CHAIN_RPC = "http://127.0.0.1:8545";
 
 function chainForId(id: number): Chain {
   if (id === base.id) return base;
-  if (id === baseSepolia.id) return baseSepolia;
+  if (id === baseSepolia.id) {
+    const rpcUrl = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL?.trim();
+    if (!rpcUrl) return baseSepolia;
+    return {
+      ...baseSepolia,
+      rpcUrls: { default: { http: [rpcUrl] } },
+    };
+  }
   return defineChain({
     id,
     name: `Chain ${id}`,

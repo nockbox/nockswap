@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
+import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import {
   useBridge,
   TransactionPreview,
@@ -21,6 +24,11 @@ import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { parseAmount } from "@/lib/utils";
+import {
+  getBridgeNetworkConfig,
+  getPreferredBridgeNetworkConfig,
+} from "@/lib/bridgeNetworkConfig";
+import { getNockTokenAddress } from "@/lib/nockToken";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -46,10 +54,15 @@ export default function SwapCard({
   bridgeStatus,
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
-  // Currently only supports Nockchain -> Base direction
-  const isNockchainToBase = true;
+  const [direction, setDirection] = useState<"nock_to_base" | "base_to_nock">(
+    "base_to_nock"
+  );
+  const isNockchainToBase = direction === "nock_to_base";
   const [showAddressError, setShowAddressError] = useState(false);
   const [showAmountError, setShowAmountError] = useState(false);
+  const [flipDirectionHovered, setFlipDirectionHovered] = useState(false);
+  const [flipDirectionPressed, setFlipDirectionPressed] = useState(false);
+  const [isPreparingBurn, setIsPreparingBurn] = useState(false);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
@@ -78,6 +91,27 @@ export default function SwapCard({
 
   // Wallet connection
   const { isInstalled, isConnected, isConnecting, connect } = useWallet();
+  const chainId = useChainId();
+  const { address: evmAddress, isConnected: isEvmConnected, status: evmStatus } =
+    useAccount();
+  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
+  const { openConnectModal } = useConnectModal();
+  const expectedBurnNetwork =
+    getBridgeNetworkConfig(chainId) ?? getPreferredBridgeNetworkConfig();
+  const baseToNockReadiness = useBaseToNockContractReadiness(
+    expectedBurnNetwork?.chainId
+  );
+  const wrongNetwork = Boolean(
+    expectedBurnNetwork && chainId !== expectedBurnNetwork.chainId
+  );
+
+  const isEvmConnecting =
+    evmStatus === "connecting" || evmStatus === "reconnecting";
+
+  const burnFlowEnabled = Boolean(
+    getNockTokenAddress(expectedBurnNetwork?.chainId) ??
+      expectedBurnNetwork?.nockTokenAddress
+  );
 
   // Bridge configuration check
   const { isBridgeConfigured } = useBridge();
@@ -125,15 +159,6 @@ export default function SwapCard({
     }
 
     try {
-      if (!isNockchainToBase) {
-        onPrepareBurnSuccess?.({
-          amountNock: nockAmount,
-          destinationNockAddress: receivingAddress.trim(),
-        });
-        return;
-      }
-
-      // Prepare transaction and show confirmation screen
       const preview = await prepareTransaction(receivingAddress, nockAmount);
       if (preview && onPrepareSuccess) {
         onPrepareSuccess(preview);
@@ -147,10 +172,64 @@ export default function SwapCard({
     }
   };
 
+  const handleBurnToNockchain = () => {
+    if (isAddressValid === false || receivingAddress.trim().length === 0) {
+      setShowAddressError(true);
+      return;
+    }
+
+    const nockAmount = isFromUsdMode
+      ? parseAmount(fromAmount) / nockPrice
+      : parseAmount(fromAmount);
+
+    if (nockAmount <= 0) {
+      return;
+    }
+
+    const wholeNockAmount = Math.floor(nockAmount);
+    if (wholeNockAmount < MIN_BRIDGE_AMOUNT_NOCK) {
+      setShowAmountError(true);
+      if (onSwapError) {
+        onSwapError(
+          `Minimum burn is ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK.`
+        );
+      }
+      return;
+    }
+
+    if (onPrepareBurnSuccess) {
+      setIsPreparingBurn(true);
+      try {
+        onPrepareBurnSuccess({
+          amountNock: wholeNockAmount,
+          destinationNockAddress: receivingAddress.trim(),
+        });
+      } finally {
+        setIsPreparingBurn(false);
+      }
+    }
+  };
+
   const handleAddressChange = (value: string) => {
     setReceivingAddress(value);
     setShowAddressError(false); // Clear error when user starts typing
   };
+
+  const handleFlipDirection = () => {
+    setDirection((prev) =>
+      prev === "nock_to_base" ? "base_to_nock" : "nock_to_base"
+    );
+    setShowAddressError(false);
+    setShowAmountError(false);
+    setReceivingAddress("");
+  };
+
+  const fromChainName = isNockchainToBase ? "Nockchain" : "Base";
+  const fromChainIcon = isNockchainToBase ? ASSETS.nockchainIcon : ASSETS.baseLogo;
+  const fromChainBadgeBg = isNockchainToBase ? "#1a1a1a" : "#fff";
+  const toChainName = isNockchainToBase ? "Base" : "Nockchain";
+  const toChainIcon = isNockchainToBase ? ASSETS.baseLogo : ASSETS.nockchainIcon;
+  const toChainBadgeBg = isNockchainToBase ? "#fff" : "#1a1a1a";
 
   return (
     <div
@@ -336,7 +415,7 @@ export default function SwapCard({
                         letterSpacing: 0.13,
                       }}
                     >
-                      Nockchain
+                      {fromChainName}
                     </span>
                   </div>
                   <div
@@ -368,12 +447,12 @@ export default function SwapCard({
                         border: `2px solid ${theme.networkBadgeBorder}`,
                         overflow: "hidden",
                         boxSizing: "border-box",
-                        background: "#1a1a1a",
+                        background: fromChainBadgeBg,
                       }}
                     >
                       <Image
-                        src={ASSETS.nockchainIcon}
-                        alt="Nockchain"
+                        src={fromChainIcon}
+                        alt={fromChainName}
                         width={18}
                         height={18}
                         style={{
@@ -454,28 +533,54 @@ export default function SwapCard({
             </div>
           </div>
 
-          {/* Swap direction indicator (disabled - one-way only for now) */}
-          <div
+          {/* Swap direction toggle */}
+          <button
+            type="button"
+            aria-label="Flip swap direction"
+            onClick={handleFlipDirection}
+            onMouseEnter={() => setFlipDirectionHovered(true)}
+            onMouseLeave={() => {
+              setFlipDirectionHovered(false);
+              setFlipDirectionPressed(false);
+            }}
+            onMouseDown={() => setFlipDirectionPressed(true)}
+            onMouseUp={() => setFlipDirectionPressed(false)}
             style={{
               display: "flex",
-              padding: 8,
               alignItems: "center",
-              gap: 4,
-              borderRadius: 32,
-              background: theme.swapButtonBg,
+              justifyContent: "center",
+              width: 40,
+              height: 40,
+              flexShrink: 0,
+              padding: 0,
+              borderRadius: "50%",
               border: "none",
+              cursor: "pointer",
+              background: (() => {
+                if (isDarkMode) {
+                  if (flipDirectionPressed) return "#e0e0e0";
+                  if (flipDirectionHovered) return "#f2f2f2";
+                  return theme.swapButtonBg;
+                }
+                if (flipDirectionPressed) return "#0f0f0f";
+                if (flipDirectionHovered) return "#2a2a2a";
+                return theme.swapButtonBg;
+              })(),
+              transform: flipDirectionPressed ? "scale(0.94)" : "scale(1)",
+              transition: "background 0.15s ease, transform 0.1s ease",
             }}
           >
             <Image
               src={ASSETS.downArrow}
-              alt="To"
+              alt=""
               width={24}
               height={24}
+              aria-hidden
               style={{
                 filter: isDarkMode ? "invert(1)" : "none",
               }}
             />
-          </div>
+          </button>
 
           {/* TO input wrapper + Receiving address */}
           <div
@@ -596,7 +701,7 @@ export default function SwapCard({
                         letterSpacing: 0.13,
                       }}
                     >
-                      Base
+                      {toChainName}
                     </span>
                   </div>
                   <div
@@ -628,12 +733,12 @@ export default function SwapCard({
                         border: `2px solid ${theme.networkBadgeBorder}`,
                         overflow: "hidden",
                         boxSizing: "border-box",
-                        background: "#fff",
+                        background: toChainBadgeBg,
                       }}
                     >
                       <Image
-                        src={ASSETS.baseLogo}
-                        alt="Base"
+                        src={toChainIcon}
+                        alt={toChainName}
                         width={18}
                         height={18}
                         style={{
@@ -902,13 +1007,55 @@ export default function SwapCard({
         {/* CTA Button */}
         {(() => {
         // Determine button state and text
-        let buttonText = "Swap with Iris";
+        let buttonText = isNockchainToBase
+          ? "Swap with Iris"
+          : "Connect wallet";
         let buttonAction: () => void = handleSwap;
         let isDisabled = false;
         let isLoading = false;
 
-        // Bridge status takes priority when active
-        if (bridgeStatus === "preparing") {
+        if (!isNockchainToBase) {
+          if (!isEvmConnected || !evmAddress) {
+            buttonText = isEvmConnecting ? "Connecting..." : "Connect wallet";
+            buttonAction = () => {
+              openConnectModal?.();
+            };
+            isDisabled = isEvmConnecting;
+          } else if (!burnFlowEnabled) {
+            buttonText = "Base -> Nockchain Coming Soon";
+            isDisabled = true;
+          } else if (wrongNetwork && expectedBurnNetwork) {
+            buttonText = `Switch to ${expectedBurnNetwork.label}`;
+            buttonAction = () => {
+              switchChainAsync({
+                chainId: expectedBurnNetwork.chainId,
+              }).catch((err) => {
+                if (onSwapError) {
+                  onSwapError(
+                    err instanceof Error ? err.message : "Network switch failed"
+                  );
+                }
+              });
+            };
+            isDisabled = isSwitchingChain;
+            isLoading = isSwitchingChain;
+          } else if (baseToNockReadiness.loading) {
+            buttonText = "Checking bridge...";
+            isDisabled = true;
+            isLoading = true;
+          } else if (!baseToNockReadiness.ready) {
+            buttonText = "Bridge unavailable";
+            isDisabled = true;
+          } else {
+            buttonText = isPreparingBurn ? "Preparing..." : "Bridge Nock";
+            buttonAction = handleBurnToNockchain;
+            const hasAmount = fromAmount.trim().length > 0;
+            const hasAddress = receivingAddress.trim().length > 0;
+            isDisabled =
+              !hasAmount || !hasAddress || isBelowMinimum || isPreparingBurn;
+            isLoading = isPreparingBurn;
+          }
+        } else if (bridgeStatus === "preparing") {
           buttonText = "Preparing...";
           isDisabled = true;
           isLoading = true;
@@ -958,7 +1105,7 @@ export default function SwapCard({
               boxSizing: "border-box",
             }}
           >
-            {!isConnected && !isConnecting && (
+            {isNockchainToBase && !isConnected && !isConnecting && (
               <Image
                 src="/assets/iris-logo.svg"
                 alt="Iris"
