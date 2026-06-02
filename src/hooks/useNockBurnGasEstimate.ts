@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { encodeFunctionData, formatUnits } from "viem";
+import { formatUnits, type Address } from "viem";
 import {
   useAccount,
   useChainId,
@@ -9,8 +9,8 @@ import {
   useEstimateGas,
 } from "wagmi";
 import {
-  burnLockRootFromRecipientPkh,
-  nockBurnAbi,
+  deriveFullLockRootLimbBytes,
+  encodeWithdrawalBurnCalldata,
   nockAmountToTokenUnits,
 } from "@/lib/nockToken";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
@@ -49,7 +49,9 @@ export function useNockBurnGasEstimate(
     expectedNetwork && chainId === expectedNetwork.chainId
       ? expectedNetwork.nockTokenAddress
       : undefined;
-  const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>();
+  const [fullLockRootBytes, setFullLockRootBytes] = useState<
+    Uint8Array | undefined
+  >();
 
   const amountWei = useMemo(() => {
     if (
@@ -69,21 +71,21 @@ export function useNockBurnGasEstimate(
   useEffect(() => {
     const trimmedDestination = destinationNockAddress?.trim() ?? "";
     if (!trimmedDestination) {
-      setLockRoot(undefined);
+      setFullLockRootBytes(undefined);
       return;
     }
 
     let cancelled = false;
-    setLockRoot(undefined);
-    burnLockRootFromRecipientPkh(trimmedDestination)
+    setFullLockRootBytes(undefined);
+    deriveFullLockRootLimbBytes(trimmedDestination)
       .then((derivedLockRoot) => {
         if (!cancelled) {
-          setLockRoot(derivedLockRoot);
+          setFullLockRootBytes(derivedLockRoot);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setLockRoot(undefined);
+          setFullLockRootBytes(undefined);
         }
       });
 
@@ -93,20 +95,30 @@ export function useNockBurnGasEstimate(
   }, [destinationNockAddress]);
 
   const calldata = useMemo(() => {
-    if (!tokenAddr || amountWei === undefined || lockRoot === undefined) {
+    if (
+      !tokenAddr ||
+      !address ||
+      amountWei === undefined ||
+      fullLockRootBytes === undefined
+    ) {
       return undefined;
     }
-    return encodeFunctionData({
-      abi: nockBurnAbi,
-      functionName: "burn",
-      args: [amountWei, lockRoot],
-    });
-  }, [tokenAddr, amountWei, lockRoot]);
+    try {
+      return encodeWithdrawalBurnCalldata({
+        nockContractAddress: tokenAddr as Address,
+        burner: address,
+        amount: amountWei,
+        fullLockRootBytes,
+      });
+    } catch {
+      return undefined;
+    }
+  }, [tokenAddr, address, amountWei, fullLockRootBytes]);
 
   const estimateEnabled = Boolean(address && tokenAddr && calldata);
 
   const { data: gasLimit, isFetching: gasLoading } = useEstimateGas({
-    to: tokenAddr as `0x${string}` | undefined,
+    to: tokenAddr as Address | undefined,
     data: calldata,
     account: address,
     query: { enabled: estimateEnabled },

@@ -9,8 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@rainbow-me/rainbowkit": "^2.2.11",
     "@nockbox/iris-sdk": "github:nockbox/iris-sdk#feat/wasm-module-version-bump",
+    "@rainbow-me/rainbowkit": "^2.2.11",
     "@scure/base": "^2.0.0",
     "@tanstack/react-query": "^5.90.11",
     "clsx": "^2.1.1",

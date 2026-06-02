@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useChainId } from "wagmi";
+import { getLatestTxEngineSettings } from "@nockbox/iris-sdk";
 import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { estimateBaseToNockNockchainFeeNicks } from "@/lib/baseToNockNockchainFee";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
@@ -41,7 +42,6 @@ export function useBaseToNockNockchainFeeEstimate(
     destTrimmed.length > 0 &&
     isNockAddress(destTrimmed) &&
     Boolean(bridgeNetwork) &&
-    Boolean(txEngineActivationHeights) &&
     Boolean(grpcUrl);
 
   useLayoutEffect(() => {
@@ -59,7 +59,6 @@ export function useBaseToNockNockchainFeeEstimate(
       !destTrimmed ||
       !isNockAddress(destTrimmed) ||
       !bridgeNetwork ||
-      !txEngineActivationHeights ||
       !grpcUrl
     ) {
       setDisplay("—");
@@ -70,9 +69,10 @@ export function useBaseToNockNockchainFeeEstimate(
     let cancelled = false;
 
     const burnedAmountNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
-    const txEngineSettings = bridgeOptionsFromActivationHeights(
-      txEngineActivationHeights
-    ).txEngineSettings;
+    const txEngineSettings = txEngineActivationHeights
+      ? bridgeOptionsFromActivationHeights(txEngineActivationHeights)
+          .txEngineSettings
+      : getLatestTxEngineSettings();
 
     (async () => {
       try {
@@ -88,8 +88,13 @@ export function useBaseToNockNockchainFeeEstimate(
           setDisplay(`${formatNOCK(nock)} NOCK`);
           setFeeNicks(fee);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          console.warn("[baseToNockNockchainFee] fee estimate unavailable", {
+            error: err instanceof Error ? err.message : String(err),
+            grpcUrl,
+            hasTxEngineActivationHeights: Boolean(txEngineActivationHeights),
+          });
           setDisplay("—");
           setFeeNicks(null);
         }

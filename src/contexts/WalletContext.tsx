@@ -15,16 +15,17 @@ import {
   UserRejectedError,
   NoAccountError,
   initWasm,
+  wasm,
+  type Account,
+  type Address,
+  type SignTxResponse,
 } from "@nockbox/iris-sdk";
-import type { Account, Address, SignTxResponse } from "@nockbox/iris-sdk";
 import type {
   Nicks,
   PbCom2Note,
   PbCom2RawTransaction,
   TxEngineSettings,
 } from "@nockbox/iris-sdk/wasm";
-import * as wasm from "@nockbox/iris-sdk/wasm";
-import * as guard from "@nockbox/iris-wasm/iris_wasm.guard";
 
 export { NOCK_TO_NICKS };
 
@@ -73,73 +74,84 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   >(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize provider on mount
+  // Initialize provider on mount; re-check when Iris injects (nockchain#initialized).
   useEffect(() => {
-    // Check if we're in browser
     if (typeof window === "undefined") return;
 
-    // Small delay to allow extension to inject
-    const timer = setTimeout(() => {
+    let activeProvider: NockchainProvider | null = null;
+    let cancelled = false;
+
+    function attachProvider(p: NockchainProvider) {
+      if (p.isConnected && p.accounts.length > 0) {
+        p.connect()
+          .then(({ account, rpcConfig }) => {
+            if (cancelled) return;
+            setAddress(accountAddressString(account));
+            setGrpcEndpoint(rpcConfig.rpcUrl);
+            setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
+            setIsConnected(true);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            console.error("Failed to reconnect wallet:", err);
+            setIsConnected(true);
+            setAddress(accountAddressString(p.accounts[0]));
+          });
+      }
+
+      p.on("accountsChanged", (accounts: Account[]) => {
+        if (accounts.length > 0) {
+          setAddress(accountAddressString(accounts[0]));
+          setIsConnected(true);
+        } else {
+          setAddress(null);
+          setIsConnected(false);
+        }
+      });
+
+      p.on("disconnect", () => {
+        setAddress(null);
+        setIsConnected(false);
+        setGrpcEndpoint(null);
+        setTxEngineActivationHeights(null);
+      });
+    }
+
+    function tryInitProvider() {
+      if (cancelled || activeProvider) return;
+
       const installed = NockchainProvider.isInstalled();
       setIsInstalled(installed);
+      if (!installed) return;
 
-      if (installed) {
-        try {
-          const p = new NockchainProvider();
-          setProvider(p);
-
-          // Check if already connected. If so, reconnect to get grpcEndpoint
-          if (p.isConnected && p.accounts.length > 0) {
-            p.connect()
-              .then(({ account, rpcConfig }) => {
-                setAddress(accountAddressString(account));
-                setGrpcEndpoint(rpcConfig.rpcUrl);
-                setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
-                setIsConnected(true);
-              })
-              .catch((err) => {
-                console.error("Failed to reconnect wallet:", err);
-                // Still set what we have from the cached state
-                setIsConnected(true);
-                setAddress(accountAddressString(p.accounts[0]));
-              });
-          }
-
-          // Listen for account changes
-          p.on("accountsChanged", (accounts: Account[]) => {
-            if (accounts.length > 0) {
-              setAddress(accountAddressString(accounts[0]));
-              setIsConnected(true);
-            } else {
-              setAddress(null);
-              setIsConnected(false);
-            }
-          });
-
-          // Listen for disconnect
-          p.on("disconnect", () => {
-            setAddress(null);
-            setIsConnected(false);
-            setGrpcEndpoint(null);
-            setTxEngineActivationHeights(null);
-          });
-        } catch (err) {
-          console.error("Failed to initialize wallet provider:", err);
-        }
+      try {
+        const p = new NockchainProvider();
+        activeProvider = p;
+        setProvider(p);
+        attachProvider(p);
+      } catch (err) {
+        console.error("Failed to initialize wallet provider:", err);
       }
-    }, 100);
+    }
+
+    tryInitProvider();
+    window.addEventListener("nockchain#initialized", tryInitProvider);
 
     return () => {
-      clearTimeout(timer);
-      if (provider) {
-        provider.dispose();
-      }
+      cancelled = true;
+      window.removeEventListener("nockchain#initialized", tryInitProvider);
+      activeProvider?.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const connect = useCallback(async () => {
-    if (!provider) {
+    let activeProvider = provider;
+    if (!activeProvider && NockchainProvider.isInstalled()) {
+      setIsInstalled(true);
+      activeProvider = new NockchainProvider();
+      setProvider(activeProvider);
+    }
+    if (!activeProvider) {
       setError("Iris wallet not installed");
       return;
     }
@@ -148,7 +160,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const { account, rpcConfig } = await provider.connect();
+      const { account, rpcConfig } = await activeProvider.connect();
       setAddress(accountAddressString(account));
       setGrpcEndpoint(rpcConfig.rpcUrl);
       setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);

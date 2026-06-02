@@ -1,4 +1,5 @@
 import { base58 } from "@scure/base";
+import { initWasm, wasm } from "@nockbox/iris-sdk";
 import type {
   Digest,
   Note,
@@ -6,7 +7,7 @@ import type {
   NoteData,
   SpendCondition,
   TxEngineSettings,
-} from "@nockbox/iris-wasm";
+} from "@nockbox/iris-sdk/wasm";
 import {
   bridgeFeeNicksCeil,
   toWholeNockNicks,
@@ -107,20 +108,20 @@ function selectNotesCoveringSpendable(sortedNotes: Note[], spendableNicks: bigin
  * So a 3-of-5 spend is not “emulated” as three real sigs; missing sigs are billed as that word-cost estimate until witnesses are filled.
  */
 function buildWithdrawalFeeSample(
-  wasm: typeof import("@nockbox/iris-wasm"),
+  wasmApi: typeof wasm,
   selectedNotes: Note[],
   bridgeSpend: SpendCondition,
   recipientSpend: SpendCondition,
   netToRecipientNicks: bigint,
   txEngineSettings: TxEngineSettings
 ): bigint {
-  const builder = new wasm.TxBuilder(txEngineSettings);
+  const builder = new wasmApi.TxBuilder(txEngineSettings);
 
-  const bridgeSpendClone = wasm.spendConditionFromProtobuf(
-    wasm.spendConditionToProtobuf(bridgeSpend)
+  const bridgeSpendClone = wasmApi.spendConditionFromProtobuf(
+    wasmApi.spendConditionToProtobuf(bridgeSpend)
   );
-  const recipientSpendClone = wasm.spendConditionFromProtobuf(
-    wasm.spendConditionToProtobuf(recipientSpend)
+  const recipientSpendClone = wasmApi.spendConditionFromProtobuf(
+    wasmApi.spendConditionToProtobuf(recipientSpend)
   );
 
   let remainingNet = netToRecipientNicks;
@@ -132,8 +133,8 @@ function buildWithdrawalFeeSample(
       remainingNet < noteAssets ? remainingNet : noteAssets;
     remainingNet -= giftPortion;
 
-    const noteClone = wasm.noteFromProtobuf(wasm.noteToProtobuf(note));
-    const spendBuilder = new wasm.SpendBuilder(
+    const noteClone = wasmApi.noteFromProtobuf(wasmApi.noteToProtobuf(note));
+    const spendBuilder = new wasmApi.SpendBuilder(
       noteClone,
       bridgeSpendClone,
       0,
@@ -146,7 +147,7 @@ function buildWithdrawalFeeSample(
         lock_root: recipientSpendClone,
         gift: giftPortion.toString() as Nicks,
         note_data: [] as unknown as NoteData,
-        parent_hash: wasm.noteHash(note),
+        parent_hash: wasmApi.noteHash(note),
       };
       spendBuilder.seed(seed);
     }
@@ -194,10 +195,7 @@ export async function estimateBaseToNockNockchainFeeNicks(
     throw new Error("Burn amount must be at least 1 whole NOCK in nicks.");
   }
 
-  const wasm = await import("@nockbox/iris-wasm");
-  if (typeof wasm.default === "function") {
-    await wasm.default();
-  }
+  await initWasm();
 
   const bridgePkh = wasm.pkhNew(
     BigInt(bridgeNetwork.bridgeThreshold),

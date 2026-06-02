@@ -8,9 +8,8 @@ import {
   initWasm,
   RpcError,
   UserRejectedError,
+  wasm,
 } from "@nockbox/iris-sdk";
-import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
-import { base58 } from "@scure/base";
 import type {
   BlockHeight,
   Digest,
@@ -18,8 +17,12 @@ import type {
   Note,
   PbCom2Note,
   PbCom2RawTransaction,
+  RawTxV1,
   SpendCondition,
 } from "@nockbox/iris-sdk/wasm";
+import { guard } from "@nockbox/iris-sdk/wasm";
+import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { base58 } from "@scure/base";
 import {
   bridgeOptionsFromActivationHeights,
   evmAddressToBelts,
@@ -213,9 +216,10 @@ export function useBridge(): UseBridgeReturn {
       if (!isConnected || !address) {
         throw new Error("Wallet not connected");
       }
-
+      console.log("grpc endpoint: ", grpcEndpoint)
       if (!grpcEndpoint) {
         throw new Error("gRPC endpoint not available");
+        
       }
 
       if (!txEngineActivationHeights) {
@@ -250,7 +254,6 @@ export function useBridge(): UseBridgeReturn {
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
         await initWasm();
-        const wasm = await import("@nockbox/iris-sdk/wasm");
 
         const bridgeConfig = getZorpBridgeConfig(chainId);
         if (!bridgeConfig || !activeBridgeNetwork) {
@@ -413,11 +416,19 @@ export function useBridge(): UseBridgeReturn {
 
         const fee = BigInt(feeStr);
         const rawTx = wasm.nockchainTxToRawTx(nockchainTx);
+        if (!guard.isRawTxV1(rawTx)) {
+          throw new Error("Bridge transaction must be version 1");
+        }
         const rawTxProto = wasm.rawTxToProtobuf(rawTx);
 
         const preValidation = await assertValidBridgeTransaction(
-          rawTxProto,
+          rawTx,
           "pre-signing",
+          {
+            destinationAddress,
+            amountInNicks: amountInNicks.toString() as Nicks,
+            refundPkh: address,
+          },
           bridgeConfig,
           bridgeOptions
         );
@@ -528,7 +539,6 @@ export function useBridge(): UseBridgeReturn {
       setStatus("pending");
 
       await initWasm();
-      const wasm = await import("@nockbox/iris-sdk/wasm");
 
       const bridgeConfig = getZorpBridgeConfig(chainId);
       if (!bridgeConfig) {
@@ -543,14 +553,17 @@ export function useBridge(): UseBridgeReturn {
       // This ensures the signed transaction is valid (fee sufficient, balanced, etc.)
       let signedTxId: string;
       let signedJammedTx: Uint8Array;
+      let signedRawTx: RawTxV1;
       try {
         // Parse the signed transaction bytes back to RawTx
-        const signedRawTx = wasm.rawTxFromProtobuf(signedTxProto);
+        const parsedSignedRawTx = wasm.rawTxFromProtobuf(signedTxProto);
+        if (!guard.isRawTxV1(parsedSignedRawTx)) {
+          throw new Error("Bridge transaction must be version 1");
+        }
+        signedRawTx = parsedSignedRawTx;
 
         // Get the signed TX ID and convert to JAM format for download
-        const signedNockchainTx = wasm.rawTxV1ToNockchainTx(
-          signedRawTx as Parameters<typeof wasm.rawTxV1ToNockchainTx>[0]
-        );
+        const signedNockchainTx = wasm.rawTxV1ToNockchainTx(signedRawTx);
         signedTxId = signedNockchainTx.id || "unknown";
         signedJammedTx = wasm.jam(wasm.nockchainTxToNoun(signedNockchainTx));
 
@@ -581,8 +594,13 @@ export function useBridge(): UseBridgeReturn {
       }
 
       await assertValidBridgeTransaction(
-        signedTxProto,
+        signedRawTx,
         "post-signing",
+        {
+          destinationAddress: prepared.destinationAddress,
+          amountInNicks: prepared.amountInNicks.toString() as Nicks,
+          refundPkh: address!,
+        },
         bridgeConfig,
         bridgeOptions
       );
@@ -598,7 +616,6 @@ export function useBridge(): UseBridgeReturn {
       const unsignedRawTx = wasm.rawTxFromProtobuf(
         prepared.rawTx as PbCom2RawTransaction
       );
-      const signedRawTx = wasm.rawTxFromProtobuf(signedTxProto);
 
       console.log("[Bridge] Transaction about to submit", {
         txId: signedTxId,
