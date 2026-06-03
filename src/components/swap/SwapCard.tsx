@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
-import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
@@ -95,7 +95,6 @@ export default function SwapCard({
   const { address: evmAddress, isConnected: isEvmConnected, status: evmStatus } =
     useAccount();
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
-  const { openConnectModal } = useConnectModal();
   const expectedBurnNetwork =
     getBridgeNetworkConfig(chainId) ?? getPreferredBridgeNetworkConfig();
   const baseToNockReadiness = useBaseToNockContractReadiness(
@@ -1016,11 +1015,58 @@ export default function SwapCard({
 
         if (!isNockchainToBase) {
           if (!isEvmConnected || !evmAddress) {
-            buttonText = isEvmConnecting ? "Connecting..." : "Connect wallet";
-            buttonAction = () => {
-              openConnectModal?.();
-            };
-            isDisabled = isEvmConnecting;
+            return (
+              <ConnectButton.Custom>
+                {({ mounted, openConnectModal }) => {
+                  const walletButtonDisabled = isEvmConnecting || !mounted;
+                  return (
+                    <button
+                      onClick={openConnectModal}
+                      disabled={walletButtonDisabled}
+                      style={{
+                        display: "flex",
+                        width: "100%",
+                        height: 56,
+                        padding: "17px 20px",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: 10,
+                        borderRadius: 4,
+                        background: walletButtonDisabled ? "#f6f5f1" : "#ffc413",
+                        border: "none",
+                        cursor: walletButtonDisabled ? "auto" : "pointer",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      <Image
+                        src="/assets/RainbowKitIcon.png"
+                        alt="RainbowKit"
+                        width={20}
+                        height={20}
+                        style={{
+                          opacity: walletButtonDisabled ? 0.4 : 1,
+                        }}
+                      />
+                      <span
+                        style={{
+                          color: "#000",
+                          textAlign: "center",
+                          fontFamily: "var(--font-inter), sans-serif",
+                          fontSize: 16,
+                          fontStyle: "normal",
+                          fontWeight: 500,
+                          lineHeight: "22px",
+                          letterSpacing: 0.16,
+                          opacity: walletButtonDisabled ? 0.4 : 1,
+                        }}
+                      >
+                        {isEvmConnecting ? "Connecting..." : "Wallet Connect"}
+                      </span>
+                    </button>
+                  );
+                }}
+              </ConnectButton.Custom>
+            );
           } else if (!burnFlowEnabled) {
             buttonText = "Base -> Nockchain Coming Soon";
             isDisabled = true;
@@ -1047,7 +1093,7 @@ export default function SwapCard({
             buttonText = "Bridge unavailable";
             isDisabled = true;
           } else {
-            buttonText = isPreparingBurn ? "Preparing..." : "Bridge Nock";
+            buttonText = isPreparingBurn ? "Preparing..." : "Swap";
             buttonAction = handleBurnToNockchain;
             const hasAmount = fromAmount.trim().length > 0;
             const hasAddress = receivingAddress.trim().length > 0;
