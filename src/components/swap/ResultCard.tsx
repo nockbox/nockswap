@@ -77,6 +77,13 @@ export default function ResultCard({
   const isSuccess = status === "success";
   const isConfirming = status === "confirming";
   const theme = getCardTheme(isDarkMode);
+  const isBaseToNock = flowDirection === "base_to_nock";
+  const fromChain = isBaseToNock
+    ? { name: "Base", icon: ASSETS.baseLogo, badgeBg: "#fff" }
+    : { name: "Nockchain", icon: ASSETS.nockchainIcon, badgeBg: "#1a1a1a" };
+  const toChain = isBaseToNock
+    ? { name: "Nockchain", icon: ASSETS.nockchainIcon, badgeBg: "#1a1a1a" }
+    : { name: "Base", icon: ASSETS.baseLogo, badgeBg: "#fff" };
   const confirmDisabled = Boolean(
     confirmDisabledReason ||
       confirmSubmitting ||
@@ -326,12 +333,12 @@ export default function ResultCard({
                   border: `2px solid ${theme.networkBadgeBorder}`,
                   overflow: "hidden",
                   boxSizing: "border-box",
-                  background: "#1a1a1a",
+                  background: fromChain.badgeBg,
                 }}
               >
                 <Image
-                  src={ASSETS.nockchainIcon}
-                  alt="Nockchain"
+                  src={fromChain.icon}
+                  alt={fromChain.name}
                   width={14}
                   height={14}
                   style={{
@@ -375,7 +382,7 @@ export default function ResultCard({
                   opacity: 0.5,
                 }}
               >
-                Nockchain
+                {fromChain.name}
               </span>
             </div>
           </div>
@@ -450,7 +457,7 @@ export default function ResultCard({
                   opacity: 0.5,
                 }}
               >
-                Base
+                {toChain.name}
               </span>
             </div>
             <div
@@ -484,12 +491,12 @@ export default function ResultCard({
                   border: `2px solid ${theme.networkBadgeBorder}`,
                   overflow: "hidden",
                   boxSizing: "border-box",
-                  background: "#fff",
+                  background: toChain.badgeBg,
                 }}
               >
                 <Image
-                  src={ASSETS.baseLogo}
-                  alt="Base"
+                  src={toChain.icon}
+                  alt={toChain.name}
                   width={14}
                   height={14}
                   style={{
@@ -772,12 +779,12 @@ export default function ResultCard({
                 overflow: "hidden",
                 border: `2px solid ${theme.networkBadgeBorder}`,
                 boxSizing: "border-box",
-                background: "#fff",
+                background: toChain.badgeBg,
               }}
             >
               <Image
-                src={ASSETS.baseLogo}
-                alt="Base"
+                src={toChain.icon}
+                alt={toChain.name}
                 width={14}
                 height={14}
                 style={{
