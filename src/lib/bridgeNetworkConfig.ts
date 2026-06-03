@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 
-export type BridgeNetworkId = "mainnet" | "bridge-dev";
+export type BridgeNetworkId = "bridge";
 
 export interface BridgeNetworkConfig {
   id: BridgeNetworkId;
@@ -98,36 +98,19 @@ function buildBridgeNetworkConfig(
 
 export function getBridgeNetworkConfigs(): BridgeNetworkConfig[] {
   return [
-    buildBridgeNetworkConfig("mainnet", "Base mainnet", {
-      chainId: process.env.NEXT_PUBLIC_BRIDGE_MAINNET_CHAIN_ID,
-      nockTokenAddress:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCK_TOKEN_ADDRESS,
+    buildBridgeNetworkConfig("bridge", "Bridge", {
+      chainId: process.env.NEXT_PUBLIC_BRIDGE_CHAIN_ID,
+      nockTokenAddress: process.env.NEXT_PUBLIC_BRIDGE_NOCK_TOKEN_ADDRESS,
       messageInboxAddress:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_MESSAGE_INBOX_ADDRESS,
-      bridgeSignerPkhs:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_SIGNER_PKHS,
-      bridgeThreshold:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_THRESHOLD,
-      bridgeLockRoot:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_LOCK_ROOT,
+        process.env.NEXT_PUBLIC_BRIDGE_MESSAGE_INBOX_ADDRESS,
+      bridgeSignerPkhs: process.env.NEXT_PUBLIC_BRIDGE_SIGNER_PKHS,
+      bridgeThreshold: process.env.NEXT_PUBLIC_BRIDGE_THRESHOLD,
+      bridgeLockRoot: process.env.NEXT_PUBLIC_BRIDGE_LOCK_ROOT,
       nockchainConfirmationDepth:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCKCHAIN_CONFIRMATION_DEPTH,
+        process.env.NEXT_PUBLIC_BRIDGE_NOCKCHAIN_CONFIRMATION_DEPTH,
       nockchainGrpcEndpoint:
-        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCKCHAIN_GRPC_URL,
+        process.env.NEXT_PUBLIC_BRIDGE_NOCKCHAIN_GRPC_URL,
     }, { nockchainConfirmationDepth: 100 }),
-    buildBridgeNetworkConfig("bridge-dev", "Bridge dev", {
-      chainId: process.env.NEXT_PUBLIC_BRIDGE_DEV_CHAIN_ID,
-      nockTokenAddress: process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCK_TOKEN_ADDRESS,
-      messageInboxAddress:
-        process.env.NEXT_PUBLIC_BRIDGE_DEV_MESSAGE_INBOX_ADDRESS,
-      bridgeSignerPkhs: process.env.NEXT_PUBLIC_BRIDGE_DEV_SIGNER_PKHS,
-      bridgeThreshold: process.env.NEXT_PUBLIC_BRIDGE_DEV_THRESHOLD,
-      bridgeLockRoot: process.env.NEXT_PUBLIC_BRIDGE_DEV_LOCK_ROOT,
-      nockchainConfirmationDepth:
-        process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCKCHAIN_CONFIRMATION_DEPTH,
-      nockchainGrpcEndpoint:
-        process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCKCHAIN_GRPC_URL,
-    }),
   ].filter((config): config is BridgeNetworkConfig => Boolean(config));
 }
 
@@ -139,5 +122,5 @@ export function getBridgeNetworkConfig(
 
 export function getPreferredBridgeNetworkConfig(): BridgeNetworkConfig | undefined {
   const configs = getBridgeNetworkConfigs();
-  return configs.find((config) => config.id === "mainnet") ?? configs[0];
+  return configs[0];
 }

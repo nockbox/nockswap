@@ -3,7 +3,7 @@ import { http } from "wagmi";
 import { base, baseSepolia } from "viem/chains";
 import { defineChain, type Chain } from "viem";
 
-/** RPC for chain IDs other than Base / Base Sepolia (e.g. local Anvil 31337). */
+/** RPC for chain IDs other than Base / Base Sepolia. */
 const DEFAULT_LOCAL_CHAIN_RPC = "http://127.0.0.1:8545";
 
 function chainForId(id: number): Chain {
