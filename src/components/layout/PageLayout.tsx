@@ -8,6 +8,7 @@ import { ASSETS } from "@/lib/constants";
 import { useWallet } from "@/hooks/useWallet";
 import { truncateAddress } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useMediaQuery";
+import { useTheme } from "./ThemeProvider";
 
 export interface Theme {
   background: string;
@@ -28,7 +29,8 @@ interface PageLayoutProps {
 }
 
 export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { theme: themeMode, setTheme: setThemeMode } = useTheme();
+  const isDarkMode = themeMode === "dark";
   const [showLearnMore, setShowLearnMore] = useState(false);
   const { isConnected, address } = useWallet();
   const isMobile = useIsMobile();
@@ -217,7 +219,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                   lineHeight: "16px",
                 }}
               >
-                Now both ways
+                Base withdrawals now live
               </span>
             </div>
             <button
@@ -337,7 +339,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
               }}
             >
               <button
-                onClick={() => setIsDarkMode(false)}
+                onClick={() => setThemeMode("light")}
                 style={{
                   padding: 4,
                   background: !isDarkMode
@@ -361,7 +363,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                 </svg>
               </button>
               <button
-                onClick={() => setIsDarkMode(true)}
+                onClick={() => setThemeMode("dark")}
                 style={{
                   padding: 4,
                   borderRadius: 10,
@@ -436,7 +438,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
               }}
             >
               <button
-                onClick={() => setIsDarkMode(false)}
+                onClick={() => setThemeMode("light")}
                 style={{
                   padding: 4,
                   background: !isDarkMode
@@ -460,7 +462,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                 </svg>
               </button>
               <button
-                onClick={() => setIsDarkMode(true)}
+                onClick={() => setThemeMode("dark")}
                 style={{
                   padding: 4,
                   borderRadius: 10,
