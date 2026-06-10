@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ClipboardEvent } from "react";
 import Image from "next/image";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -132,12 +132,14 @@ export default function SwapCard({
     amountInNock < MIN_BRIDGE_AMOUNT_NOCK;
 
   // Address validation
-  const isAddressValid =
-    receivingAddress.trim().length === 0
+  const validateReceivingAddress = (value: string) =>
+    value.trim().length === 0
       ? null // No validation state when empty
       : isNockchainToBase
-      ? isEvmAddress(receivingAddress) // Receiving on Base needs EVM address
-      : isNockAddress(receivingAddress); // Receiving on Nockchain needs Nock address
+      ? isEvmAddress(value) // Receiving on Base needs EVM address
+      : isNockAddress(value); // Receiving on Nockchain needs Nock address
+
+  const isAddressValid = validateReceivingAddress(receivingAddress);
 
   const theme = getSwapCardTheme(isDarkMode);
 
@@ -212,6 +214,22 @@ export default function SwapCard({
   const handleAddressChange = (value: string) => {
     setReceivingAddress(value);
     setShowAddressError(false); // Clear error when user starts typing
+  };
+
+  const handleAddressPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+
+    const input = event.currentTarget;
+    const pastedText = event.clipboardData.getData("text");
+    const selectionStart = input.selectionStart ?? receivingAddress.length;
+    const selectionEnd = input.selectionEnd ?? receivingAddress.length;
+    const nextValue =
+      receivingAddress.slice(0, selectionStart) +
+      pastedText +
+      receivingAddress.slice(selectionEnd);
+
+    setReceivingAddress(nextValue);
+    setShowAddressError(validateReceivingAddress(nextValue) === false);
   };
 
   const handleFlipDirection = () => {
@@ -923,6 +941,7 @@ export default function SwapCard({
                 type="text"
                 value={receivingAddress}
                 onChange={(e) => handleAddressChange(e.target.value)}
+                onPaste={handleAddressPaste}
                 placeholder={
                   isNockchainToBase
                     ? "Enter your Base wallet address"
