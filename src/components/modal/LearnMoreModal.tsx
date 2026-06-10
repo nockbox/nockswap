@@ -42,7 +42,7 @@ export default function LearnMoreModal({
           top: 60,
           right: 20,
           zIndex: 101,
-          width: 340,
+          width: "min(440px, calc(100vw - 40px))",
           maxHeight: "calc(100vh - 80px)",
           background: theme.background,
           border: `1px solid ${theme.border}`,
@@ -110,21 +110,13 @@ export default function LearnMoreModal({
             <p style={{ margin: 0, color: theme.titleColor }}>
               <strong>Nockchain → Base (deposit)</strong>
             </p>
-            <ol
-              style={{
-                margin: 0,
-                paddingLeft: 20,
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
-            >
-              <li>
+            <ol style={{ margin: 0, paddingLeft: 22, listStyle: "decimal" }}>
+              <li style={{ marginBottom: 12 }}>
                 <strong>You send NOCK</strong> to the bridge&apos;s multisig
                 address on Nockchain. Your transaction includes your Base
                 wallet address in the transaction data.
               </li>
-              <li>
+              <li style={{ marginBottom: 12 }}>
                 <strong>Operators verify your deposit.</strong> Four trusted
                 ecosystem partners—Zorp, NockBox, Lambda, and
                 SWPS—independently confirm it.
@@ -139,21 +131,13 @@ export default function LearnMoreModal({
             <p style={{ margin: 0, color: theme.titleColor }}>
               <strong>Base → Nockchain (withdrawal)</strong>
             </p>
-            <ol
-              style={{
-                margin: 0,
-                paddingLeft: 20,
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
-            >
-              <li>
+            <ol style={{ margin: 0, paddingLeft: 22, listStyle: "decimal" }}>
+              <li style={{ marginBottom: 12 }}>
                 <strong>You burn NOCK on Base.</strong> Your transaction
                 includes your Nockchain address. The ERC-20 NOCK is burned to
                 remove it from circulation on Base.
               </li>
-              <li>
+              <li style={{ marginBottom: 12 }}>
                 <strong>Operators verify the burn.</strong> The same four
                 partners independently confirm it.
               </li>
@@ -167,22 +151,14 @@ export default function LearnMoreModal({
             <p style={{ margin: 0, color: theme.titleColor }}>
               <strong>Both directions</strong>
             </p>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 20,
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
-            >
-              <li>
+            <ul style={{ margin: 0, paddingLeft: 22, listStyle: "disc" }}>
+              <li style={{ marginBottom: 12 }}>
                 <strong>Minimum:</strong> 100,000 NOCK
               </li>
-              <li>
+              <li style={{ marginBottom: 12 }}>
                 <strong>Fee:</strong> ~0.3% (covers gas costs)
               </li>
-              <li>
+              <li style={{ marginBottom: 12 }}>
                 <strong>Timing:</strong> Each step can take a while depending
                 on network conditions and operator confirmation. There is
                 currently no progress indicator—expect your NOCK to arrive
