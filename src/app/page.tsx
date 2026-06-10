@@ -238,7 +238,7 @@ export default function Home() {
                 margin: 0,
               }}
             >
-              Your Nockchain to Bridge
+              Your Bridge between Nockchain and Base
             </p>
           </div>
 
