@@ -219,7 +219,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                   lineHeight: "16px",
                 }}
               >
-                Base withdrawals now live
+                Base withdrawals are Live
               </span>
             </div>
             <button
