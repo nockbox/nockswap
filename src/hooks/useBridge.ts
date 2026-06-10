@@ -125,6 +125,29 @@ function parseDigestString(value: string, field: string): Digest {
   return trimmed as Digest;
 }
 
+const TX_ACCEPTANCE_TIMEOUT_MS = 30_000;
+const TX_ACCEPTANCE_POLL_INTERVAL_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTransactionAccepted(
+  grpcClient: InstanceType<typeof wasm.GrpcClient>,
+  txId: string
+): Promise<boolean> {
+  const deadline = Date.now() + TX_ACCEPTANCE_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    if (await grpcClient.transactionAccepted(txId)) {
+      return true;
+    }
+    await sleep(TX_ACCEPTANCE_POLL_INTERVAL_MS);
+  }
+
+  return false;
+}
+
 export function useBridge(): UseBridgeReturn {
   const chainId = useChainId();
   const {
@@ -132,6 +155,7 @@ export function useBridge(): UseBridgeReturn {
     address,
     grpcEndpoint,
     txEngineActivationHeights,
+    coinbaseTimelockBlocks,
     signRawTx,
   } = useWallet();
   const [status, setStatus] = useState<BridgeStatus>("idle");
@@ -163,9 +187,14 @@ export function useBridge(): UseBridgeReturn {
         return { valid: false, error: "Invalid EVM address format" };
       }
 
-      // Verify belt encoding is reversible (sanity check)
-      if (!verifyBeltEncoding(destinationAddress)) {
-        return { valid: false, error: "Address encoding verification failed" };
+      try {
+
+        // Verify belt encoding is reversible (sanity check). This requires initialized WASM.
+        if (!verifyBeltEncoding(destinationAddress)) {
+          return { valid: false, error: "Address encoding verification failed" };
+        }
+      } catch {
+        return { valid: false, error: "Address encoding verification unavailable" };
       }
 
       return { valid: true };
@@ -228,6 +257,12 @@ export function useBridge(): UseBridgeReturn {
         );
       }
 
+      if (coinbaseTimelockBlocks == null) {
+        throw new Error(
+          "Coinbase timelock settings not available; connect your wallet and try again"
+        );
+      }
+
       if (!isBridgeConfigured) {
         throw new Error(`Bridge not configured for connected chain ${chainId}`);
       }
@@ -239,6 +274,8 @@ export function useBridge(): UseBridgeReturn {
       preparedTxRef.current = null;
 
       try {
+        await initWasm();
+
         // Validate destination
         const validation = validateDestination(destinationAddress);
         if (!validation.valid) {
@@ -253,7 +290,6 @@ export function useBridge(): UseBridgeReturn {
         }
 
         const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
-        await initWasm();
 
         const bridgeConfig = getZorpBridgeConfig(chainId);
         if (!bridgeConfig || !activeBridgeNetwork) {
@@ -280,12 +316,15 @@ export function useBridge(): UseBridgeReturn {
         const simpleSpendCondition = wasm.spendConditionNewPkh(simplePkh);
         const simpleFirstName = wasm.spendConditionFirstName(simpleSpendCondition);
 
-        // Coinbase notes use PKH + TIM spend condition
+        // Coinbase notes use PKH + TIM spend condition (timelock from Iris RPC config)
         const coinbaseSpendCondition: SpendCondition = [
           { tag: "pkh", ...simplePkh },
           {
             tag: "tim" as const,
-            rel: { min: 100 as BlockHeight, max: null },
+            rel: {
+              min: coinbaseTimelockBlocks as BlockHeight,
+              max: null,
+            },
             abs: { min: null, max: null },
           },
         ];
@@ -489,6 +528,7 @@ export function useBridge(): UseBridgeReturn {
       chainId,
       grpcEndpoint,
       txEngineActivationHeights,
+      coinbaseTimelockBlocks,
       activeBridgeNetwork,
       isBridgeConfigured,
       validateDestination,
@@ -562,9 +602,18 @@ export function useBridge(): UseBridgeReturn {
         }
         signedRawTx = parsedSignedRawTx;
 
-        // Get the signed TX ID and convert to JAM format for download
+        // Use the signed raw tx id for UI/explorer links. Signing changes witness data,
+        // so the pre-signing id must not be surfaced after confirmation.
         const signedNockchainTx = wasm.rawTxV1ToNockchainTx(signedRawTx);
-        signedTxId = signedNockchainTx.id || "unknown";
+        const signedRawTxId = signedRawTx.id;
+        signedTxId = signedRawTxId || "unknown";
+        if (signedNockchainTx.id !== signedTxId) {
+          console.warn("[Bridge] signed tx id mismatch; using raw tx id", {
+            nockchainTxId: signedNockchainTx.id,
+            rawTxId: signedTxId,
+          });
+          signedNockchainTx.id = signedRawTxId;
+        }
         signedJammedTx = wasm.jam(wasm.nockchainTxToNoun(signedNockchainTx));
 
         // Reconstruct notes and spend conditions from stored protobuf
@@ -629,8 +678,25 @@ export function useBridge(): UseBridgeReturn {
         feeNicks: prepared.fee.toString(),
       });
 
-      // Submit to network
-      await grpcClient.sendTransaction(signedTxProto);
+      // Submit to network, then confirm the RPC reports the signed tx as accepted.
+      const submitAck = await grpcClient.sendTransaction(signedTxProto);
+      console.log("[Bridge] Transaction submit RPC acknowledged", {
+        txId: signedTxId,
+        acknowledgement: submitAck,
+      });
+
+      const accepted = await waitForTransactionAccepted(grpcClient, signedTxId);
+      if (!accepted) {
+        throw new Error(
+          `Transaction ${signedTxId} was submitted but not accepted by the RPC within ${Math.round(
+            TX_ACCEPTANCE_TIMEOUT_MS / 1000
+          )}s`
+        );
+      }
+
+      console.log("[Bridge] Transaction accepted by RPC", {
+        txId: signedTxId,
+      });
 
       const bridgeResult: BridgeResult = {
         txId: signedTxId,
@@ -668,7 +734,7 @@ export function useBridge(): UseBridgeReturn {
     } finally {
       confirmInFlightRef.current = false;
     }
-  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights, chainId]);
+  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights, chainId, address]);
 
   return {
     // State

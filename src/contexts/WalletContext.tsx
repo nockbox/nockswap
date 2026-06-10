@@ -26,6 +26,7 @@ import type {
   PbCom2RawTransaction,
   TxEngineSettings,
 } from "@nockbox/iris-sdk/wasm";
+import { guard } from "@nockbox/iris-sdk/wasm";
 
 export { NOCK_TO_NICKS };
 
@@ -48,6 +49,8 @@ interface WalletContextType {
   grpcEndpoint: string | null;
   /** From last successful `connect`; required for tx fee / bridge build alignment with the wallet. */
   txEngineActivationHeights: Record<number, TxEngineSettings> | null;
+  /** Coinbase note maturity (blocks), from Iris RPC config. */
+  coinbaseTimelockBlocks: number | null;
   error: string | null;
 
   // Actions
@@ -72,6 +75,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [txEngineActivationHeights, setTxEngineActivationHeights] = useState<
     Record<number, TxEngineSettings> | null
   >(null);
+  const [coinbaseTimelockBlocks, setCoinbaseTimelockBlocks] = useState<
+    number | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   // Initialize provider on mount; re-check when Iris injects (nockchain#initialized).
@@ -89,6 +95,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             setAddress(accountAddressString(account));
             setGrpcEndpoint(rpcConfig.rpcUrl);
             setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
+            setCoinbaseTimelockBlocks(rpcConfig.coinbaseTimelockBlocks);
             setIsConnected(true);
           })
           .catch((err) => {
@@ -114,6 +121,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setIsConnected(false);
         setGrpcEndpoint(null);
         setTxEngineActivationHeights(null);
+        setCoinbaseTimelockBlocks(null);
       });
     }
 
@@ -164,6 +172,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setAddress(accountAddressString(account));
       setGrpcEndpoint(rpcConfig.rpcUrl);
       setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
+      setCoinbaseTimelockBlocks(rpcConfig.coinbaseTimelockBlocks);
       setIsConnected(true);
     } catch (err) {
       if (err instanceof UserRejectedError) {
@@ -185,6 +194,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setIsConnected(false);
     setGrpcEndpoint(null);
     setTxEngineActivationHeights(null);
+    setCoinbaseTimelockBlocks(null);
     setError(null);
   }, []);
 
@@ -280,6 +290,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     address,
     grpcEndpoint,
     txEngineActivationHeights,
+    coinbaseTimelockBlocks,
     error,
     connect,
     disconnect,

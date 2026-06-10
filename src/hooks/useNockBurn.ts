@@ -7,7 +7,7 @@ import {
   useSendTransaction,
   useSwitchChain,
 } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
+import { getChainId, waitForTransactionReceipt } from "@wagmi/core";
 import {
   keccak256,
   toHex,
@@ -33,9 +33,32 @@ const BURN_FOR_WITHDRAWAL_TOPIC = keccak256(
   toHex(new TextEncoder().encode("BurnForWithdrawal(address,bytes32,uint256)"))
 );
 
+const CHAIN_SWITCH_TIMEOUT_MS = 10_000;
+const CHAIN_SWITCH_POLL_INTERVAL_MS = 250;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function addressFromTopic(topic: Hex | undefined): Address | undefined {
   if (!topic || topic.length !== 66) return undefined;
   return `0x${topic.slice(-40)}` as Address;
+}
+
+async function waitForActiveChain(
+  config: ReturnType<typeof useConfig>,
+  expectedChainId: number
+): Promise<boolean> {
+  const deadline = Date.now() + CHAIN_SWITCH_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    if (getChainId(config) === expectedChainId) {
+      return true;
+    }
+    await sleep(CHAIN_SWITCH_POLL_INTERVAL_MS);
+  }
+
+  return false;
 }
 
 export function useNockBurn() {
@@ -69,6 +92,12 @@ export function useNockBurn() {
 
     if (chainId !== expectedNetwork.chainId) {
       await switchChainAsync({ chainId: expectedNetwork.chainId });
+      const switched = await waitForActiveChain(config, expectedNetwork.chainId);
+      if (!switched) {
+        throw new Error(
+          `Switch to ${expectedNetwork.label} before confirming the burn transaction.`
+        );
+      }
     }
 
     const nockAddress = expectedNetwork.nockTokenAddress;
@@ -116,53 +145,49 @@ export function useNockBurn() {
       chainId: expectedNetwork.chainId,
     });
 
-    void waitForTransactionReceipt(config, {
+    const receipt = await waitForTransactionReceipt(config, {
       hash,
       chainId: expectedNetwork.chainId,
-    })
-      .then((receipt) => {
-        const nockAddressLower = nockAddress.toLowerCase();
-        const burnLogs = receipt.logs.filter(
-          (log) =>
-            log.address.toLowerCase() === nockAddressLower &&
-            log.topics[0]?.toLowerCase() === BURN_FOR_WITHDRAWAL_TOPIC
-        );
+    });
+    const nockAddressLower = nockAddress.toLowerCase();
+    const burnLogs = receipt.logs.filter(
+      (log) =>
+        log.address.toLowerCase() === nockAddressLower &&
+        log.topics[0]?.toLowerCase() === BURN_FOR_WITHDRAWAL_TOPIC
+    );
 
-        console.info("[nockswap] withdrawal burn receipt", {
-          txHash: hash,
-          status: receipt.status,
-          blockNumber: receipt.blockNumber.toString(),
-          gasUsed: receipt.gasUsed.toString(),
-          nockBurnForWithdrawalLogCount: burnLogs.length,
-        });
+    console.info("[nockswap] withdrawal burn receipt", {
+      txHash: hash,
+      status: receipt.status,
+      blockNumber: receipt.blockNumber.toString(),
+      gasUsed: receipt.gasUsed.toString(),
+      nockBurnForWithdrawalLogCount: burnLogs.length,
+    });
 
-        for (const [index, log] of burnLogs.entries()) {
-          const chainBurner = addressFromTopic(log.topics[1]);
-          const chainCommitment = log.topics[2];
-          const chainAmountRaw = BigInt(log.data);
-          console.info("[nockswap] chain BurnForWithdrawal log", {
-            txHash: hash,
-            logIndex: index,
-            chainBurner,
-            expectedBurner: address,
-            burnerMatches:
-              chainBurner?.toLowerCase() === address.toLowerCase(),
-            chainCommitment,
-            expectedCommitment: commitment,
-            commitmentMatches:
-              chainCommitment?.toLowerCase() === commitment.toLowerCase(),
-            chainAmountRaw: chainAmountRaw.toString(),
-            expectedAmountRaw: amount.toString(),
-            amountMatches: chainAmountRaw === amount,
-          });
-        }
-      })
-      .catch((err) => {
-        console.warn("[nockswap] failed to read withdrawal burn receipt", {
-          txHash: hash,
-          error: err instanceof Error ? err.message : String(err),
-        });
+    if (receipt.status !== "success") {
+      throw new Error("Burn transaction reverted");
+    }
+
+    for (const [index, log] of burnLogs.entries()) {
+      const chainBurner = addressFromTopic(log.topics[1]);
+      const chainCommitment = log.topics[2];
+      const chainAmountRaw = BigInt(log.data);
+      console.info("[nockswap] chain BurnForWithdrawal log", {
+        txHash: hash,
+        logIndex: index,
+        chainBurner,
+        expectedBurner: address,
+        burnerMatches:
+          chainBurner?.toLowerCase() === address.toLowerCase(),
+        chainCommitment,
+        expectedCommitment: commitment,
+        commitmentMatches:
+          chainCommitment?.toLowerCase() === commitment.toLowerCase(),
+        chainAmountRaw: chainAmountRaw.toString(),
+        expectedAmountRaw: amount.toString(),
+        amountMatches: chainAmountRaw === amount,
       });
+    }
 
     return hash;
   };

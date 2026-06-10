@@ -281,6 +281,10 @@ export default function Home() {
                     ? resultState.nockchainNetworkFeeDisplay
                     : undefined
                 }
+                confirmingAmountInNicks={
+                  BigInt(Math.floor(resultState.amountNock)) * NICKS_PER_NOCK
+                }
+                confirmingNockchainFeeNicks={resultState.nockchainFeeNicks}
                 totalNock={`${formatNOCK(calculateBaseToNockAmountAfterFees(resultState.amountNock, resultState.nockchainFeeNicks))} NOCK`}
                 totalUsd=""
                 receivingAddress={truncateAddress(resultState.destinationNockAddress)}

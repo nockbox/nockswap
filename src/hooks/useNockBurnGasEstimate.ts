@@ -21,6 +21,7 @@ function formatEthApprox(wei: bigint): string {
   if (!Number.isFinite(n) || n <= 0) return "0 ETH";
   const abs = Math.abs(n);
   const decimals = abs >= 1 ? 4 : abs >= 0.01 ? 5 : 6;
+  if (abs < 10 ** -decimals) return `<0.${"0".repeat(decimals - 1)}1 ETH`;
   return `~${n.toFixed(decimals)} ETH`;
 }
 
