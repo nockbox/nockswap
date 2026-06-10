@@ -6,21 +6,27 @@ import { defineChain, type Chain } from "viem";
 /** RPC for chain IDs other than Base / Base Sepolia. */
 const DEFAULT_LOCAL_CHAIN_RPC = "http://127.0.0.1:8545";
 
+function withRpcOverride(chain: Chain): Chain {
+  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL?.trim();
+  if (!rpcUrl) return chain;
+  return {
+    ...chain,
+    rpcUrls: { default: { http: [rpcUrl] } },
+  };
+}
+
 function chainForId(id: number): Chain {
-  if (id === base.id) return base;
+  if (id === base.id) return withRpcOverride(base);
   if (id === baseSepolia.id) {
-    const rpcUrl = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL?.trim();
-    if (!rpcUrl) return baseSepolia;
-    return {
-      ...baseSepolia,
-      rpcUrls: { default: { http: [rpcUrl] } },
-    };
+    return withRpcOverride(baseSepolia);
   }
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_BASE_RPC_URL?.trim() ?? DEFAULT_LOCAL_CHAIN_RPC;
   return defineChain({
     id,
     name: `Chain ${id}`,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [DEFAULT_LOCAL_CHAIN_RPC] } },
+    rpcUrls: { default: { http: [rpcUrl] } },
   });
 }
 
