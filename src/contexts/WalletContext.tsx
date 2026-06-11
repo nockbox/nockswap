@@ -65,6 +65,8 @@ interface WalletContextType {
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
+type ProviderConnection = Awaited<ReturnType<NockchainProvider["connect"]>>;
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [provider, setProvider] = useState<NockchainProvider | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -80,6 +82,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   >(null);
   const [error, setError] = useState<string | null>(null);
 
+  const applyConnection = useCallback((connection: ProviderConnection) => {
+    const { account, rpcConfig } = connection;
+    setAddress(accountAddressString(account));
+    setGrpcEndpoint(rpcConfig.rpcUrl);
+    setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
+    setCoinbaseTimelockBlocks(rpcConfig.coinbaseTimelockBlocks);
+    setIsConnected(true);
+  }, []);
+
+  const clearConnection = useCallback(() => {
+    setAddress(null);
+    setIsConnected(false);
+    setGrpcEndpoint(null);
+    setTxEngineActivationHeights(null);
+    setCoinbaseTimelockBlocks(null);
+  }, []);
+
   // Initialize provider on mount; re-check when Iris injects (nockchain#initialized).
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -90,38 +109,49 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     function attachProvider(p: NockchainProvider) {
       if (p.isConnected && p.accounts.length > 0) {
         p.connect()
-          .then(({ account, rpcConfig }) => {
+          .then((connection) => {
             if (cancelled) return;
-            setAddress(accountAddressString(account));
-            setGrpcEndpoint(rpcConfig.rpcUrl);
-            setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
-            setCoinbaseTimelockBlocks(rpcConfig.coinbaseTimelockBlocks);
-            setIsConnected(true);
+            applyConnection(connection);
           })
           .catch((err) => {
             if (cancelled) return;
-            console.error("Failed to reconnect wallet:", err);
-            setIsConnected(true);
-            setAddress(accountAddressString(p.accounts[0]));
+            // Don't surface a half-connected session (address without RPC
+            // config); leave the wallet disconnected so the user reconnects
+            // explicitly and gets a consistent state.
+            console.error("Failed to restore wallet session:", err);
           });
       }
 
       p.on("accountsChanged", (accounts: Account[]) => {
+        if (cancelled) return;
         if (accounts.length > 0) {
           setAddress(accountAddressString(accounts[0]));
           setIsConnected(true);
+          // RPC config can differ per account/session; refresh it so tx
+          // building never mixes the new account with stale settings.
+          p.connect()
+            .then((connection) => {
+              if (cancelled) return;
+              applyConnection(connection);
+            })
+            .catch((err) => {
+              if (cancelled) return;
+              console.error(
+                "Failed to refresh wallet RPC config after account change:",
+                err
+              );
+              setGrpcEndpoint(null);
+              setTxEngineActivationHeights(null);
+              setCoinbaseTimelockBlocks(null);
+            });
         } else {
-          setAddress(null);
-          setIsConnected(false);
+          clearConnection();
         }
       });
 
       p.on("disconnect", () => {
-        setAddress(null);
-        setIsConnected(false);
-        setGrpcEndpoint(null);
-        setTxEngineActivationHeights(null);
-        setCoinbaseTimelockBlocks(null);
+        if (cancelled) return;
+        clearConnection();
       });
     }
 
@@ -150,7 +180,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("nockchain#initialized", tryInitProvider);
       activeProvider?.dispose();
     };
-  }, []);
+  }, [applyConnection, clearConnection]);
 
   const connect = useCallback(async () => {
     let activeProvider = provider;
@@ -168,12 +198,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const { account, rpcConfig } = await activeProvider.connect();
-      setAddress(accountAddressString(account));
-      setGrpcEndpoint(rpcConfig.rpcUrl);
-      setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
-      setCoinbaseTimelockBlocks(rpcConfig.coinbaseTimelockBlocks);
-      setIsConnected(true);
+      applyConnection(await activeProvider.connect());
     } catch (err) {
       if (err instanceof UserRejectedError) {
         setError("Connection rejected by user");
@@ -187,16 +212,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsConnecting(false);
     }
-  }, [provider]);
+  }, [provider, applyConnection]);
 
   const disconnect = useCallback(() => {
-    setAddress(null);
-    setIsConnected(false);
-    setGrpcEndpoint(null);
-    setTxEngineActivationHeights(null);
-    setCoinbaseTimelockBlocks(null);
+    clearConnection();
     setError(null);
-  }, []);
+  }, [clearConnection]);
 
   const sendTransaction = useCallback(
     async (to: string, amountInNocks: number): Promise<string> => {
