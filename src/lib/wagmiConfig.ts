@@ -31,6 +31,14 @@ function chainForId(id: number): Chain {
 }
 
 /**
+ * RainbowKit's `getDefaultConfig` throws at module load when `projectId` is
+ * empty, which would take down the entire build/site. Fall back to a
+ * placeholder so the app still renders; only WalletConnect-based wallets are
+ * unavailable until the real id is configured.
+ */
+const FALLBACK_WALLETCONNECT_PROJECT_ID = "0".repeat(32);
+
+/**
  * RainbowKit + wagmi config. Chain list mirrors
  * `NEXT_PUBLIC_WALLETCONNECT_CHAIN_IDS` (comma-separated).
  *
@@ -58,8 +66,15 @@ export const wagmiConfig = (() => {
     })
   ) as Record<(typeof chains)[number]["id"], ReturnType<typeof http>>;
 
-  const projectId =
-    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() ?? "";
+  const configuredProjectId =
+    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim();
+  if (!configuredProjectId) {
+    console.warn(
+      "[nockswap] NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not set; " +
+        "WalletConnect wallets will be unavailable in the connect modal."
+    );
+  }
+  const projectId = configuredProjectId || FALLBACK_WALLETCONNECT_PROJECT_ID;
 
   return getDefaultConfig({
     appName: "Nock Swap",
