@@ -58,9 +58,12 @@ type ResultState =
 
 export default function Home() {
   const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
+  // Covers the full burn flow (wallet prompt + receipt wait); `useSendTransaction.isPending`
+  // goes false as soon as the tx is sent, which would re-enable Confirm mid-flight.
+  const [isBurnSubmitting, setIsBurnSubmitting] = useState(false);
   const chainId = useChainId();
   const { confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
-  const { burnNock, isBurning: isBurnPending } = useNockBurn();
+  const { burnNock } = useNockBurn();
   const expectedBurnNetwork = useMemo(
     () => getBridgeNetworkConfig(chainId) ?? getPreferredBridgeNetworkConfig(),
     [chainId]
@@ -130,7 +133,7 @@ export default function Home() {
   };
 
   const handleConfirmBurn = async () => {
-    if (resultState.type !== "confirming_burn") return;
+    if (resultState.type !== "confirming_burn" || isBurnSubmitting) return;
     const { amountNock, destinationNockAddress } = resultState;
     const sharedBurnResultData = {
       amountNock,
@@ -139,6 +142,7 @@ export default function Home() {
       nockchainNetworkFeeDisplay,
       nockchainFeeNicks: nockchainFeeNicksEstimate,
     };
+    setIsBurnSubmitting(true);
     try {
       if (!burnContractReadiness.ready) {
         throw new Error(
@@ -172,6 +176,8 @@ export default function Home() {
         message: errorMessage,
         ...sharedBurnResultData,
       });
+    } finally {
+      setIsBurnSubmitting(false);
     }
   };
 
@@ -347,7 +353,7 @@ export default function Home() {
                 nockchainNetworkFeeAmount={nockchainNetworkFeeDisplay}
                 nockchainNetworkFeeLoading={nockchainNetworkFeeLoading}
                 confirmingNockchainFeeNicks={nockchainFeeNicksEstimate}
-                confirmSubmitting={isBurnPending}
+                confirmSubmitting={isBurnSubmitting}
                 confirmDisabledReason={
                   burnContractReadiness.loading
                     ? "Checking Base bridge contracts..."
@@ -357,7 +363,13 @@ export default function Home() {
             ) : (
               <ResultCard
                 isDarkMode={isDarkMode}
-                status={resultState.type === "success" ? "success" : "failed"}
+                status={
+                  resultState.type === "success"
+                    ? resultState.result.accepted
+                      ? "success"
+                      : "submitted"
+                    : "failed"
+                }
                 errorMessage={
                   resultState.type === "error" ? resultState.message : undefined
                 }

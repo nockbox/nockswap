@@ -51,6 +51,12 @@ export interface BridgeResult {
   destinationAddress: string;
   amountInNicks: bigint;
   signedJammedTx: Uint8Array;
+  /**
+   * True when the RPC confirmed acceptance. False means the transaction was
+   * broadcast but acceptance was not observed within the polling window; it
+   * may still complete, so the UI must not present it as failed.
+   */
+  accepted: boolean;
 }
 
 export interface TransactionPreview {
@@ -163,13 +169,35 @@ export function useBridge(): UseBridgeReturn {
   const [result, setResult] = useState<BridgeResult | null>(null);
   const [preview, setPreview] = useState<TransactionPreview | null>(null);
 
-  // Keep a ref to the grpc client to avoid recreating
-  const grpcClientRef = useRef<unknown>(null);
+  // Cache the grpc client per endpoint; recreate if the wallet supplies a new URL.
+  const grpcClientRef = useRef<{
+    endpoint: string;
+    client: InstanceType<typeof wasm.GrpcClient>;
+  } | null>(null);
 
   const confirmInFlightRef = useRef(false);
 
+  // Bumped by cancel/reset. A confirmation captures the epoch at entry and
+  // aborts before broadcasting if it changed (e.g. user cancelled while the
+  // wallet signature prompt was open).
+  const confirmEpochRef = useRef(0);
+
   // Store prepared transaction for confirmation step
   const preparedTxRef = useRef<PreparedTransaction | null>(null);
+
+  // Requires initialized WASM (call after `initWasm()`).
+  const getGrpcClient = useCallback(
+    (endpoint: string): InstanceType<typeof wasm.GrpcClient> => {
+      const cached = grpcClientRef.current;
+      if (cached && cached.endpoint === endpoint) {
+        return cached.client;
+      }
+      const client = new wasm.GrpcClient(endpoint);
+      grpcClientRef.current = { endpoint, client };
+      return client;
+    },
+    []
+  );
 
   const activeBridgeNetwork = useMemo(
     () => getBridgeNetworkConfig(chainId),
@@ -222,6 +250,7 @@ export function useBridge(): UseBridgeReturn {
   );
 
   const reset = useCallback(() => {
+    confirmEpochRef.current += 1;
     setStatus("idle");
     setError(null);
     setResult(null);
@@ -230,6 +259,7 @@ export function useBridge(): UseBridgeReturn {
   }, []);
 
   const cancelTransaction = useCallback(() => {
+    confirmEpochRef.current += 1;
     setStatus("idle");
     setPreview(null);
     preparedTxRef.current = null;
@@ -302,13 +332,7 @@ export function useBridge(): UseBridgeReturn {
           String(bridgeOptions.txEngineSettings.cost_per_word)
         );
 
-        // Create or reuse gRPC client
-        if (!grpcClientRef.current) {
-          grpcClientRef.current = new wasm.GrpcClient(grpcEndpoint);
-        }
-        const grpcClient = grpcClientRef.current as InstanceType<
-          typeof wasm.GrpcClient
-        >;
+        const grpcClient = getGrpcClient(grpcEndpoint);
 
         // Derive first-names from PKH (notes are indexed by first-name, not address)
         const digestAddress = parseDigestString(address, "wallet address");
@@ -532,6 +556,7 @@ export function useBridge(): UseBridgeReturn {
       activeBridgeNetwork,
       isBridgeConfigured,
       validateDestination,
+      getGrpcClient,
     ]
   );
 
@@ -557,10 +582,19 @@ export function useBridge(): UseBridgeReturn {
       );
     }
 
+    if (!grpcEndpoint) {
+      throw new Error("gRPC endpoint not available");
+    }
+
     if (confirmInFlightRef.current) {
       return undefined;
     }
     confirmInFlightRef.current = true;
+
+    // Captured before the signature prompt; cancel/reset bump the epoch so a
+    // confirmation that was cancelled mid-signature never broadcasts.
+    const epoch = confirmEpochRef.current;
+    const isCancelled = () => confirmEpochRef.current !== epoch;
 
     setStatus("awaiting_signature");
 
@@ -575,6 +609,13 @@ export function useBridge(): UseBridgeReturn {
           prepared.txNotes as { notes: unknown[]; spendConditions: unknown[] }
         ).spendConditions,
       });
+
+      if (isCancelled()) {
+        console.warn(
+          "[Bridge] Confirmation cancelled while awaiting signature; dropping signed transaction without broadcasting"
+        );
+        return undefined;
+      }
 
       setStatus("pending");
 
@@ -654,13 +695,7 @@ export function useBridge(): UseBridgeReturn {
         bridgeOptions
       );
 
-      // Get or create gRPC client
-      if (!grpcClientRef.current) {
-        grpcClientRef.current = new wasm.GrpcClient(grpcEndpoint!);
-      }
-      const grpcClient = grpcClientRef.current as InstanceType<
-        typeof wasm.GrpcClient
-      >;
+      const grpcClient = getGrpcClient(grpcEndpoint);
 
       const unsignedRawTx = wasm.rawTxFromProtobuf(
         prepared.rawTx as PbCom2RawTransaction
@@ -678,6 +713,13 @@ export function useBridge(): UseBridgeReturn {
         feeNicks: prepared.fee.toString(),
       });
 
+      if (isCancelled()) {
+        console.warn(
+          "[Bridge] Confirmation cancelled before broadcast; dropping signed transaction"
+        );
+        return undefined;
+      }
+
       // Submit to network, then confirm the RPC reports the signed tx as accepted.
       const submitAck = await grpcClient.sendTransaction(signedTxProto);
       console.log("[Bridge] Transaction submit RPC acknowledged", {
@@ -685,18 +727,23 @@ export function useBridge(): UseBridgeReturn {
         acknowledgement: submitAck,
       });
 
+      // The transaction is broadcast at this point. A polling timeout is NOT a
+      // failure: surface it as submitted-but-unconfirmed so the user does not
+      // retry a transfer that may still complete.
       const accepted = await waitForTransactionAccepted(grpcClient, signedTxId);
-      if (!accepted) {
-        throw new Error(
-          `Transaction ${signedTxId} was submitted but not accepted by the RPC within ${Math.round(
-            TX_ACCEPTANCE_TIMEOUT_MS / 1000
-          )}s`
+      if (accepted) {
+        console.log("[Bridge] Transaction accepted by RPC", {
+          txId: signedTxId,
+        });
+      } else {
+        console.warn(
+          "[Bridge] Transaction submitted but acceptance not observed within polling window",
+          {
+            txId: signedTxId,
+            timeoutMs: TX_ACCEPTANCE_TIMEOUT_MS,
+          }
         );
       }
-
-      console.log("[Bridge] Transaction accepted by RPC", {
-        txId: signedTxId,
-      });
 
       const bridgeResult: BridgeResult = {
         txId: signedTxId,
@@ -704,6 +751,7 @@ export function useBridge(): UseBridgeReturn {
         destinationAddress: prepared.destinationAddress,
         amountInNicks: prepared.amountInNicks,
         signedJammedTx,
+        accepted,
       };
 
       setResult(bridgeResult);
@@ -713,6 +761,12 @@ export function useBridge(): UseBridgeReturn {
 
       return bridgeResult;
     } catch (err) {
+      // The user already cancelled this confirmation; the prepared tx is gone
+      // and the UI moved on, so don't override status with error/confirming.
+      if (isCancelled()) {
+        return undefined;
+      }
+
       const message =
         err instanceof Error
           ? err.message
@@ -734,7 +788,7 @@ export function useBridge(): UseBridgeReturn {
     } finally {
       confirmInFlightRef.current = false;
     }
-  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights, chainId, address]);
+  }, [status, signRawTx, grpcEndpoint, txEngineActivationHeights, chainId, address, getGrpcClient]);
 
   return {
     // State

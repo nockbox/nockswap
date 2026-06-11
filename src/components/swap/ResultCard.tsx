@@ -14,7 +14,7 @@ import { TransactionPreview, BridgeStatus, BridgeResult } from "@/hooks/useBridg
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { formatNOCK } from "@/lib/utils";
 
-type ResultStatus = "success" | "failed" | "confirming";
+type ResultStatus = "success" | "submitted" | "failed" | "confirming";
 type FlowDirection = "nock_to_base" | "base_to_nock";
 
 interface ResultCardProps {
@@ -75,6 +75,8 @@ export default function ResultCard({
   const isMobile = useIsMobile();
 
   const isSuccess = status === "success";
+  // Broadcast to the network, but acceptance not yet observed. Not a failure.
+  const isSubmitted = status === "submitted";
   const isConfirming = status === "confirming";
   const theme = getCardTheme(isDarkMode);
   const isBaseToNock = flowDirection === "base_to_nock";
@@ -84,12 +86,15 @@ export default function ResultCard({
   const toChain = isBaseToNock
     ? { name: "Nockchain", icon: ASSETS.nockchainIcon, badgeBg: "#1a1a1a" }
     : { name: "Base", icon: ASSETS.baseLogo, badgeBg: "#fff" };
-  const confirmDisabled = Boolean(
-    confirmDisabledReason ||
-      confirmSubmitting ||
+  const transactionInFlight = Boolean(
+    confirmSubmitting ||
       bridgeStatus === "awaiting_signature" ||
       bridgeStatus === "pending"
   );
+  const confirmDisabled = Boolean(confirmDisabledReason) || transactionInFlight;
+  // Once a signature has been requested, cancelling can no longer stop the
+  // transaction; keep the user on this screen until the flow settles.
+  const cancelDisabled = transactionInFlight;
 
   // Calculate bridge fee for confirming state.
   const calculateBridgeFee = (): string => {
@@ -158,8 +163,8 @@ export default function ResultCard({
       return;
     }
 
-    // For success screen: download signed transaction (JAM format)
-    if (isSuccess && result?.signedJammedTx) {
+    // For success/submitted screens: download signed transaction (JAM format)
+    if ((isSuccess || isSubmitted) && result?.signedJammedTx) {
       const buffer = new ArrayBuffer(result.signedJammedTx.length);
       new Uint8Array(buffer).set(result.signedJammedTx);
       const blob = new Blob([buffer], { type: "application/jam" });
@@ -204,8 +209,8 @@ export default function ResultCard({
           paddingRight: isMobile ? 20 : 0,
         }}
       >
-        {/* Status icon - only show for success/failed, not confirming */}
-        {!isConfirming && (
+        {/* Status icon - only success/failed have a definitive outcome icon */}
+        {!isConfirming && !isSubmitted && (
           <Image
             src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
             alt={isSuccess ? "Success" : "Failed"}
@@ -223,9 +228,12 @@ export default function ResultCard({
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: isMobile && !isConfirming ? "flex-start" : "center",
+            alignItems:
+              isMobile && !isConfirming && !isSubmitted
+                ? "flex-start"
+                : "center",
             gap: 4,
-            width: isConfirming ? "100%" : "auto",
+            width: isConfirming || isSubmitted ? "100%" : "auto",
           }}
         >
           <span
@@ -236,16 +244,42 @@ export default function ResultCard({
               lineHeight: isMobile ? "36px" : "40px",
               letterSpacing: isMobile ? -0.64 : -0.72,
               color: theme.textPrimary,
-              textAlign: isConfirming ? "left" : isMobile ? "left" : "center",
+              textAlign:
+                isConfirming || isSubmitted
+                  ? "left"
+                  : isMobile
+                  ? "left"
+                  : "center",
             }}
           >
             {isConfirming
               ? "Confirm Transaction"
+              : isSubmitted
+              ? "Submitted"
               : isSuccess
               ? "Success"
               : "Failed"}
           </span>
-          {!isSuccess && !isConfirming && errorMessage && (
+          {isSubmitted && (
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: isMobile ? 14 : 15,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: isMobile ? 0.14 : 0.15,
+                opacity: 0.5,
+                textAlign: "left",
+              }}
+            >
+              Your transaction was broadcast to the network but has not been
+              confirmed yet. It may still complete — check the transaction ID
+              below before retrying.
+            </span>
+          )}
+          {!isSuccess && !isSubmitted && !isConfirming && errorMessage && (
             <span
               style={{
                 color: theme.textPrimary,
@@ -908,7 +942,7 @@ export default function ResultCard({
         )}
 
         {/* Download Transaction button */}
-        {((isConfirming && preview) || (isSuccess && result)) && (
+        {((isConfirming && preview) || ((isSuccess || isSubmitted) && result)) && (
           <button
             onClick={handleDownloadTransaction}
             onMouseEnter={() => setDownloadHover(true)}
@@ -964,6 +998,7 @@ export default function ResultCard({
           {/* Cancel button */}
           <button
             onClick={onHomeClick}
+            disabled={cancelDisabled}
             style={{
               display: "flex",
               flex: 1,
@@ -975,7 +1010,7 @@ export default function ResultCard({
               borderRadius: 8,
               background: "transparent",
               border: `1px solid ${theme.cardBorder}`,
-              cursor: "pointer",
+              cursor: cancelDisabled ? "not-allowed" : "pointer",
               boxSizing: "border-box",
             }}
           >
@@ -989,6 +1024,7 @@ export default function ResultCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
+                opacity: cancelDisabled ? 0.4 : 1,
               }}
             >
               Cancel
