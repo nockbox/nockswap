@@ -17,7 +17,7 @@
 }
 
 .dark {
-  --background: #1a1a1a;
+  --background: #000;
   --foreground: #f5f5f5;
   --card: #262626;
   --card-foreground: #f5f5f5;
@@ -71,15 +71,11 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg width='400' height='400' viewBox='0 0 400 400' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Ctext x='50' y='200' font-family='serif' font-size='120' font-weight='600' fill='%23333333' opacity='0.3'%3ENOCK%3C/text%3E%3C/svg%3E");
 }
 
-/* Address input placeholder - muted color */
+/* Input placeholders - muted color, readable on both themes */
 @layer base {
-  .address-input::placeholder {
+  .address-input::placeholder,
+  .amount-input::placeholder {
     color: #aaa;
-    opacity: 1;
-  }
-
-  .dark .amount-input::placeholder {
-    color: #666;
     opacity: 1;
   }
 }

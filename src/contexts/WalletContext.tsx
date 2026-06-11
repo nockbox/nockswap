@@ -10,13 +10,29 @@ import {
 } from "react";
 import {
   NockchainProvider,
+  NOCK_TO_NICKS,
   WalletNotInstalledError,
   UserRejectedError,
   NoAccountError,
+  initWasm,
+  wasm,
+  type Account,
+  type Address,
+  type SignTxResponse,
 } from "@nockbox/iris-sdk";
+import type {
+  Nicks,
+  PbCom2Note,
+  PbCom2RawTransaction,
+  TxEngineSettings,
+} from "@nockbox/iris-sdk/wasm";
+import { guard } from "@nockbox/iris-sdk/wasm";
 
-// 1 NOCK = 65,536 nicks
-export const NOCK_TO_NICKS = 65_536;
+export { NOCK_TO_NICKS };
+
+function accountAddressString(account: Account): string {
+  return String(account.address);
+}
 
 interface SignRawTxParams {
   rawTx: unknown;
@@ -31,19 +47,25 @@ interface WalletContextType {
   isConnecting: boolean;
   address: string | null;
   grpcEndpoint: string | null;
+  /** From last successful `connect`; required for tx fee / bridge build alignment with the wallet. */
+  txEngineActivationHeights: Record<number, TxEngineSettings> | null;
+  /** Coinbase note maturity (blocks), from Iris RPC config. */
+  coinbaseTimelockBlocks: number | null;
   error: string | null;
 
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
   sendTransaction: (to: string, amountInNocks: number) => Promise<string>;
-  signRawTx: (params: SignRawTxParams) => Promise<Uint8Array>;
+  signRawTx: (params: SignRawTxParams) => Promise<PbCom2RawTransaction>;
 
   // Helpers
   formatAddress: (address: string) => string;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
+
+type ProviderConnection = Awaited<ReturnType<NockchainProvider["connect"]>>;
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [provider, setProvider] = useState<NockchainProvider | null>(null);
@@ -52,73 +74,122 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
   const [grpcEndpoint, setGrpcEndpoint] = useState<string | null>(null);
+  const [txEngineActivationHeights, setTxEngineActivationHeights] = useState<
+    Record<number, TxEngineSettings> | null
+  >(null);
+  const [coinbaseTimelockBlocks, setCoinbaseTimelockBlocks] = useState<
+    number | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize provider on mount
-  useEffect(() => {
-    // Check if we're in browser
-    if (typeof window === "undefined") return;
-
-    // Small delay to allow extension to inject
-    const timer = setTimeout(() => {
-      const installed = NockchainProvider.isInstalled();
-      setIsInstalled(installed);
-
-      if (installed) {
-        try {
-          const p = new NockchainProvider();
-          setProvider(p);
-
-          // Check if already connected. If so, reconnect to get grpcEndpoint
-          if (p.isConnected && p.accounts.length > 0) {
-            p.connect()
-              .then(({ pkh, grpcEndpoint: endpoint }) => {
-                setAddress(pkh);
-                setGrpcEndpoint(endpoint);
-                setIsConnected(true);
-              })
-              .catch((err) => {
-                console.error("Failed to reconnect wallet:", err);
-                // Still set what we have from the cached state
-                setIsConnected(true);
-                setAddress(p.accounts[0]);
-              });
-          }
-
-          // Listen for account changes
-          p.on("accountsChanged", (accounts: string[]) => {
-            if (accounts.length > 0) {
-              setAddress(accounts[0]);
-              setIsConnected(true);
-            } else {
-              setAddress(null);
-              setIsConnected(false);
-            }
-          });
-
-          // Listen for disconnect
-          p.on("disconnect", () => {
-            setAddress(null);
-            setIsConnected(false);
-            setGrpcEndpoint(null);
-          });
-        } catch (err) {
-          console.error("Failed to initialize wallet provider:", err);
-        }
-      }
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      if (provider) {
-        provider.dispose();
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const applyConnection = useCallback((connection: ProviderConnection) => {
+    const { account, rpcConfig } = connection;
+    setAddress(accountAddressString(account));
+    setGrpcEndpoint(rpcConfig.rpcUrl);
+    setTxEngineActivationHeights(rpcConfig.txEngineActivationHeights);
+    setCoinbaseTimelockBlocks(rpcConfig.coinbaseTimelockBlocks);
+    setIsConnected(true);
   }, []);
 
+  const clearConnection = useCallback(() => {
+    setAddress(null);
+    setIsConnected(false);
+    setGrpcEndpoint(null);
+    setTxEngineActivationHeights(null);
+    setCoinbaseTimelockBlocks(null);
+  }, []);
+
+  // Initialize provider on mount; re-check when Iris injects (nockchain#initialized).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let activeProvider: NockchainProvider | null = null;
+    let cancelled = false;
+
+    function attachProvider(p: NockchainProvider) {
+      if (p.isConnected && p.accounts.length > 0) {
+        p.connect()
+          .then((connection) => {
+            if (cancelled) return;
+            applyConnection(connection);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            // Don't surface a half-connected session (address without RPC
+            // config); leave the wallet disconnected so the user reconnects
+            // explicitly and gets a consistent state.
+            console.error("Failed to restore wallet session:", err);
+          });
+      }
+
+      p.on("accountsChanged", (accounts: Account[]) => {
+        if (cancelled) return;
+        if (accounts.length > 0) {
+          setAddress(accountAddressString(accounts[0]));
+          setIsConnected(true);
+          // RPC config can differ per account/session; refresh it so tx
+          // building never mixes the new account with stale settings.
+          p.connect()
+            .then((connection) => {
+              if (cancelled) return;
+              applyConnection(connection);
+            })
+            .catch((err) => {
+              if (cancelled) return;
+              console.error(
+                "Failed to refresh wallet RPC config after account change:",
+                err
+              );
+              setGrpcEndpoint(null);
+              setTxEngineActivationHeights(null);
+              setCoinbaseTimelockBlocks(null);
+            });
+        } else {
+          clearConnection();
+        }
+      });
+
+      p.on("disconnect", () => {
+        if (cancelled) return;
+        clearConnection();
+      });
+    }
+
+    function tryInitProvider() {
+      if (cancelled || activeProvider) return;
+
+      const installed = NockchainProvider.isInstalled();
+      setIsInstalled(installed);
+      if (!installed) return;
+
+      try {
+        const p = new NockchainProvider();
+        activeProvider = p;
+        setProvider(p);
+        attachProvider(p);
+      } catch (err) {
+        console.error("Failed to initialize wallet provider:", err);
+      }
+    }
+
+    tryInitProvider();
+    window.addEventListener("nockchain#initialized", tryInitProvider);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("nockchain#initialized", tryInitProvider);
+      activeProvider?.dispose();
+    };
+  }, [applyConnection, clearConnection]);
+
   const connect = useCallback(async () => {
-    if (!provider) {
+    let activeProvider = provider;
+    if (!activeProvider && NockchainProvider.isInstalled()) {
+      setIsInstalled(true);
+      activeProvider = new NockchainProvider();
+      setProvider(activeProvider);
+    }
+    if (!activeProvider) {
       setError("Iris wallet not installed");
       return;
     }
@@ -127,10 +198,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const { pkh, grpcEndpoint: endpoint } = await provider.connect();
-      setAddress(pkh);
-      setGrpcEndpoint(endpoint);
-      setIsConnected(true);
+      applyConnection(await activeProvider.connect());
     } catch (err) {
       if (err instanceof UserRejectedError) {
         setError("Connection rejected by user");
@@ -144,14 +212,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsConnecting(false);
     }
-  }, [provider]);
+  }, [provider, applyConnection]);
 
   const disconnect = useCallback(() => {
-    setAddress(null);
-    setIsConnected(false);
-    setGrpcEndpoint(null);
+    clearConnection();
     setError(null);
-  }, []);
+  }, [clearConnection]);
 
   const sendTransaction = useCallback(
     async (to: string, amountInNocks: number): Promise<string> => {
@@ -166,16 +232,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // Convert NOCK to nicks
       const amountInNicks = Math.floor(amountInNocks * NOCK_TO_NICKS);
 
-      const tx = provider.transaction().to(to).amount(amountInNicks).build();
-
-      const txId = await provider.sendTransaction(tx);
+      const txId = await provider.sendTransaction({
+        to: to as Address,
+        amount: String(amountInNicks) as Nicks,
+      });
       return txId;
     },
     [provider, isConnected]
   );
 
   const signRawTx = useCallback(
-    async (params: SignRawTxParams): Promise<Uint8Array> => {
+    async (params: SignRawTxParams): Promise<PbCom2RawTransaction> => {
       if (!provider) {
         throw new Error("Wallet not connected");
       }
@@ -185,23 +252,47 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        return await provider.signRawTx({
-          rawTx: params.rawTx,
-          notes: params.notes,
-          spendConditions: params.spendConditions,
-        });
+        await initWasm();
+        const rawTxWasm = wasm.rawTxFromProtobuf(
+          params.rawTx as PbCom2RawTransaction
+        );
+        const nockTx = wasm.rawTxV1ToNockchainTx(
+          rawTxWasm as Parameters<typeof wasm.rawTxV1ToNockchainTx>[0]
+        );
+        const notes = (params.notes as PbCom2Note[]).map((n) =>
+          wasm.noteFromProtobuf(n)
+        );
+        const signResult = await provider.signTx(nockTx, notes);
+
+        if (
+          signResult &&
+          typeof signResult === "object" &&
+          "tx" in signResult &&
+          (signResult as SignTxResponse).tx
+        ) {
+          const signedRaw = wasm.nockchainTxToRawTx(
+            (signResult as SignTxResponse).tx
+          );
+          return wasm.rawTxToProtobuf(signedRaw) as PbCom2RawTransaction;
+        }
+
+        if (guard.isPbCom2RawTransaction(signResult as unknown)) {
+          return signResult as unknown as PbCom2RawTransaction;
+        }
+
+        throw new Error(
+          "Wallet returned an unexpected sign transaction response shape"
+        );
       } catch (err) {
-        // Check if it's a user rejection
         if (err instanceof UserRejectedError) {
-          throw new Error("User rejected the transaction");
+          throw err;
         }
 
         // TODO: This workaround can be removed when iris wallet fix is merged
         if (err instanceof Error && err.message === "[object Object]") {
-          throw new Error("User cancelled the transaction");
+          throw new UserRejectedError("User cancelled the transaction");
         }
 
-        // Re-throw with better message if possible
         throw err;
       }
     },
@@ -219,6 +310,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     isConnecting,
     address,
     grpcEndpoint,
+    txEngineActivationHeights,
+    coinbaseTimelockBlocks,
     error,
     connect,
     disconnect,

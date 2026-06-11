@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import {
   ASSETS,
+  bridgeFeeNicksCeil,
+  bridgeFeeNicksFloor,
   PROTOCOL_FEE_DISPLAY,
-  PROTOCOL_FEE_NICKS_PER_NOCK,
 } from "@/lib/constants";
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -12,69 +14,114 @@ import { TransactionPreview, BridgeStatus, BridgeResult } from "@/hooks/useBridg
 import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import { formatNOCK } from "@/lib/utils";
 
-type ResultStatus = "success" | "failed" | "confirming";
+type ResultStatus = "success" | "submitted" | "failed" | "confirming";
+type FlowDirection = "nock_to_base" | "base_to_nock";
 
 interface ResultCardProps {
   isDarkMode?: boolean;
   status?: ResultStatus;
+  flowDirection?: FlowDirection;
   errorMessage?: string;
   networkFeePercent?: string;
   networkFeeAmount?: string;
+  nockchainNetworkFeeAmount?: string;
+  nockchainNetworkFeeLoading?: boolean;
   totalUsd?: string;
   totalNock?: string;
   receivingAddress?: string;
   fullReceivingAddress?: string;
   transactionId?: string;
   fullTransactionId?: string;
+  transactionUrl?: string;
   onHomeClick?: () => void;
   onConfirm?: () => Promise<void>;
   preview?: TransactionPreview;
   bridgeStatus?: BridgeStatus;
   result?: BridgeResult;
+  confirmingAmountInNicks?: bigint;
+  confirmingNockchainFeeNicks?: bigint | null;
+  confirmSubmitting?: boolean;
+  confirmDisabledReason?: string | null;
 }
 
 export default function ResultCard({
   isDarkMode = false,
   status = "success",
+  flowDirection = "nock_to_base",
   errorMessage,
   networkFeePercent = PROTOCOL_FEE_DISPLAY,
   networkFeeAmount = "0 NOCK",
+  nockchainNetworkFeeAmount,
+  nockchainNetworkFeeLoading = false,
   totalUsd = "",
   totalNock = "0 NOCK",
   receivingAddress = "",
   fullReceivingAddress,
   transactionId = "",
   fullTransactionId,
+  transactionUrl,
   onHomeClick,
   onConfirm,
   preview,
   bridgeStatus,
   result,
+  confirmingAmountInNicks,
+  confirmingNockchainFeeNicks,
+  confirmSubmitting = false,
+  confirmDisabledReason,
 }: ResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [downloadHover, setDownloadHover] = useState(false);
   const isMobile = useIsMobile();
 
   const isSuccess = status === "success";
+  // Broadcast to the network, but acceptance not yet observed. Not a failure.
+  const isSubmitted = status === "submitted";
   const isConfirming = status === "confirming";
   const theme = getCardTheme(isDarkMode);
+  const isBaseToNock = flowDirection === "base_to_nock";
+  const fromChain = isBaseToNock
+    ? { name: "Base", icon: ASSETS.baseLogo, badgeBg: "#fff" }
+    : { name: "Nockchain", icon: ASSETS.nockchainIcon, badgeBg: "#1a1a1a" };
+  const toChain = isBaseToNock
+    ? { name: "Nockchain", icon: ASSETS.nockchainIcon, badgeBg: "#1a1a1a" }
+    : { name: "Base", icon: ASSETS.baseLogo, badgeBg: "#fff" };
+  const transactionInFlight = Boolean(
+    confirmSubmitting ||
+      bridgeStatus === "awaiting_signature" ||
+      bridgeStatus === "pending"
+  );
+  const confirmDisabled = Boolean(confirmDisabledReason) || transactionInFlight;
+  // Once a signature has been requested, cancelling can no longer stop the
+  // transaction; keep the user on this screen until the flow settles.
+  const cancelDisabled = transactionInFlight;
 
-  // Calculate bridge fee for confirming state
-  // Formula: roundDown(amountInNicks / 65536) * BigInt(PROTOCOL_FEE_NICKS_PER_NOCK)
-  // Note: BigInt division automatically truncates (rounds down)
+  // Calculate bridge fee for confirming state.
   const calculateBridgeFee = (): string => {
-    if (!preview) return "0 NOCK";
+    // Confirming flow has `preview`; success flow only has `result` (see page.tsx).
+    const amountInNicks =
+      preview?.amountInNicks ?? result?.amountInNicks ?? confirmingAmountInNicks;
+    if (amountInNicks === undefined) return "0 NOCK";
     const bridgeFeeNicks =
-      (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+      flowDirection === "base_to_nock"
+        ? bridgeFeeNicksCeil(amountInNicks)
+        : bridgeFeeNicksFloor(amountInNicks);
     const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
     return `${formatNOCK(bridgeFeeNock)} NOCK`;
   };
 
   // Calculate amount after bridge fee deduction
   const calculateAmountAfterBridgeFee = (): string => {
+    if (flowDirection === "base_to_nock" && confirmingAmountInNicks !== undefined) {
+      const bridgeFeeNicks = bridgeFeeNicksCeil(confirmingAmountInNicks);
+      const nockchainFeeNicks = confirmingNockchainFeeNicks ?? 0n;
+      const amountAfterFees =
+        confirmingAmountInNicks - bridgeFeeNicks - nockchainFeeNicks;
+      const amountNock = Number(amountAfterFees) / NOCK_TO_NICKS;
+      return `${formatNOCK(amountNock)} NOCK`;
+    }
     if (!preview) return totalNock;
-    const bridgeFeeNicks =
-      (preview.amountInNicks / 65536n) * PROTOCOL_FEE_NICKS_PER_NOCK;
+    const bridgeFeeNicks = bridgeFeeNicksFloor(preview.amountInNicks);
     const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
     const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
     return `${formatNOCK(amountNock)} NOCK`;
@@ -93,8 +140,9 @@ export default function ResultCard({
 
   const handleOpenTransaction = () => {
     const txId = fullTransactionId || transactionId;
-    if (txId) {
-      window.open(`https://nockscan.net/tx/${txId}`, "_blank");
+    if (txId || transactionUrl) {
+      const url = transactionUrl || `https://nockscan.net/tx/${txId}`;
+      window.open(url, "_blank");
     }
   };
 
@@ -115,8 +163,8 @@ export default function ResultCard({
       return;
     }
 
-    // For success screen: download signed transaction (JAM format)
-    if (isSuccess && result?.signedJammedTx) {
+    // For success/submitted screens: download signed transaction (JAM format)
+    if ((isSuccess || isSubmitted) && result?.signedJammedTx) {
       const buffer = new ArrayBuffer(result.signedJammedTx.length);
       new Uint8Array(buffer).set(result.signedJammedTx);
       const blob = new Blob([buffer], { type: "application/jam" });
@@ -161,11 +209,13 @@ export default function ResultCard({
           paddingRight: isMobile ? 20 : 0,
         }}
       >
-        {/* Status icon - only show for success/failed, not confirming */}
-        {!isConfirming && (
-          <img
+        {/* Status icon - only success/failed have a definitive outcome icon */}
+        {!isConfirming && !isSubmitted && (
+          <Image
             src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
             alt={isSuccess ? "Success" : "Failed"}
+            width={isMobile ? 52 : 64}
+            height={isMobile ? 52 : 64}
             style={{
               width: isMobile ? 52 : 64,
               height: isMobile ? 52 : 64,
@@ -178,9 +228,12 @@ export default function ResultCard({
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: isMobile && !isConfirming ? "flex-start" : "center",
+            alignItems:
+              isMobile && !isConfirming && !isSubmitted
+                ? "flex-start"
+                : "center",
             gap: 4,
-            width: isConfirming ? "100%" : "auto",
+            width: isConfirming || isSubmitted ? "100%" : "auto",
           }}
         >
           <span
@@ -191,16 +244,42 @@ export default function ResultCard({
               lineHeight: isMobile ? "36px" : "40px",
               letterSpacing: isMobile ? -0.64 : -0.72,
               color: theme.textPrimary,
-              textAlign: isConfirming ? "left" : isMobile ? "left" : "center",
+              textAlign:
+                isConfirming || isSubmitted
+                  ? "left"
+                  : isMobile
+                  ? "left"
+                  : "center",
             }}
           >
             {isConfirming
               ? "Confirm Transaction"
+              : isSubmitted
+              ? "Submitted"
               : isSuccess
               ? "Success"
               : "Failed"}
           </span>
-          {!isSuccess && !isConfirming && errorMessage && (
+          {isSubmitted && (
+            <span
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: isMobile ? 14 : 15,
+                fontStyle: "normal",
+                fontWeight: 500,
+                lineHeight: "22px",
+                letterSpacing: isMobile ? 0.14 : 0.15,
+                opacity: 0.5,
+                textAlign: "left",
+              }}
+            >
+              Your transaction was broadcast to the network but has not been
+              confirmed yet. It may still complete — check the transaction ID
+              below before retrying.
+            </span>
+          )}
+          {!isSuccess && !isSubmitted && !isConfirming && errorMessage && (
             <span
               style={{
                 color: theme.textPrimary,
@@ -265,9 +344,11 @@ export default function ResultCard({
                 flexShrink: 0,
               }}
             >
-              <img
+              <Image
                 src={ASSETS.nockToken}
                 alt="NOCK"
+                width={40}
+                height={40}
                 style={{
                   width: 40,
                   height: 40,
@@ -286,12 +367,14 @@ export default function ResultCard({
                   border: `2px solid ${theme.networkBadgeBorder}`,
                   overflow: "hidden",
                   boxSizing: "border-box",
-                  background: "#1a1a1a",
+                  background: fromChain.badgeBg,
                 }}
               >
-                <img
-                  src={ASSETS.nockchainIcon}
-                  alt="Nockchain"
+                <Image
+                  src={fromChain.icon}
+                  alt={fromChain.name}
+                  width={14}
+                  height={14}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -333,7 +416,7 @@ export default function ResultCard({
                   opacity: 0.5,
                 }}
               >
-                Nockchain
+                {fromChain.name}
               </span>
             </div>
           </div>
@@ -351,9 +434,11 @@ export default function ResultCard({
               overflow: "clip",
             }}
           >
-            <img
+            <Image
               src="/assets/chevron.svg"
               alt="Arrow"
+              width={16}
+              height={16}
               style={{
                 width: 16,
                 height: 16,
@@ -406,7 +491,7 @@ export default function ResultCard({
                   opacity: 0.5,
                 }}
               >
-                Base
+                {toChain.name}
               </span>
             </div>
             <div
@@ -417,9 +502,11 @@ export default function ResultCard({
                 flexShrink: 0,
               }}
             >
-              <img
+              <Image
                 src={ASSETS.nockToken}
                 alt="NOCK"
+                width={40}
+                height={40}
                 style={{
                   width: 40,
                   height: 40,
@@ -438,12 +525,14 @@ export default function ResultCard({
                   border: `2px solid ${theme.networkBadgeBorder}`,
                   overflow: "hidden",
                   boxSizing: "border-box",
-                  background: "#fff",
+                  background: toChain.badgeBg,
                 }}
               >
-                <img
-                  src={ASSETS.baseLogo}
-                  alt="Base"
+                <Image
+                  src={toChain.icon}
+                  alt={toChain.name}
+                  width={14}
+                  height={14}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -507,6 +596,47 @@ export default function ResultCard({
               {networkFeeAmount}
             </span>
           </div>
+
+          {flowDirection === "base_to_nock" && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                width: "100%",
+              }}
+            >
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
+                }}
+              >
+                Nockchain fee (best effort)
+              </span>
+              <span
+                style={{
+                  color: theme.textPrimary,
+                  fontFamily: "var(--font-inter), sans-serif",
+                  fontSize: isMobile ? 14 : 15,
+                  fontStyle: "normal",
+                  fontWeight: 500,
+                  lineHeight: "22px",
+                  letterSpacing: isMobile ? 0.14 : 0.15,
+                  opacity: 0.5,
+                }}
+              >
+                {nockchainNetworkFeeLoading
+                  ? "Estimating..."
+                  : nockchainNetworkFeeAmount ?? "—"}
+              </span>
+            </div>
+          )}
 
           {/* Bridge fee row (protocol fee) */}
           <div
@@ -683,12 +813,14 @@ export default function ResultCard({
                 overflow: "hidden",
                 border: `2px solid ${theme.networkBadgeBorder}`,
                 boxSizing: "border-box",
-                background: "#fff",
+                background: toChain.badgeBg,
               }}
             >
-              <img
-                src={ASSETS.baseLogo}
-                alt="Base"
+              <Image
+                src={toChain.icon}
+                alt={toChain.name}
+                width={14}
+                height={14}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -724,9 +856,11 @@ export default function ResultCard({
               }}
               title={copied ? "Copied!" : "Copy address"}
             >
-              <img
+              <Image
                 src="/assets/copy-icon.svg"
                 alt="Copy"
+                width={16}
+                height={16}
                 style={{
                   width: 16,
                   height: 16,
@@ -792,9 +926,11 @@ export default function ResultCard({
                 }}
                 title="View on explorer"
               >
-                <img
+                <Image
                   src="/assets/external-link-icon.svg"
                   alt="External link"
+                  width={16}
+                  height={16}
                   style={{
                     width: 16,
                     height: 16,
@@ -806,7 +942,7 @@ export default function ResultCard({
         )}
 
         {/* Download Transaction button */}
-        {((isConfirming && preview) || (isSuccess && result)) && (
+        {((isConfirming && preview) || ((isSuccess || isSubmitted) && result)) && (
           <button
             onClick={handleDownloadTransaction}
             onMouseEnter={() => setDownloadHover(true)}
@@ -844,10 +980,25 @@ export default function ResultCard({
 
       {/* Buttons section */}
       {isConfirming ? (
-        <div style={{ display: "flex", gap: 12, width: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+          {confirmDisabledReason && (
+            <div
+              style={{
+                color: theme.textPrimary,
+                opacity: 0.5,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 13,
+                lineHeight: "18px",
+              }}
+            >
+              {confirmDisabledReason}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 12, width: "100%" }}>
           {/* Cancel button */}
           <button
             onClick={onHomeClick}
+            disabled={cancelDisabled}
             style={{
               display: "flex",
               flex: 1,
@@ -859,7 +1010,7 @@ export default function ResultCard({
               borderRadius: 8,
               background: "transparent",
               border: `1px solid ${theme.cardBorder}`,
-              cursor: "pointer",
+              cursor: cancelDisabled ? "not-allowed" : "pointer",
               boxSizing: "border-box",
             }}
           >
@@ -873,6 +1024,7 @@ export default function ResultCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
+                opacity: cancelDisabled ? 0.4 : 1,
               }}
             >
               Cancel
@@ -882,10 +1034,7 @@ export default function ResultCard({
           {/* Confirm button */}
           <button
             onClick={onConfirm}
-            disabled={
-              bridgeStatus === "awaiting_signature" ||
-              bridgeStatus === "pending"
-            }
+            disabled={confirmDisabled}
             style={{
               display: "flex",
               flex: 1,
@@ -896,16 +1045,9 @@ export default function ResultCard({
               gap: 10,
               borderRadius: 8,
               background:
-                bridgeStatus === "awaiting_signature" ||
-                bridgeStatus === "pending"
-                  ? "#f6f5f1"
-                  : "#ffc413",
+                confirmDisabled ? "#f6f5f1" : "#ffc413",
               border: "none",
-              cursor:
-                bridgeStatus === "awaiting_signature" ||
-                bridgeStatus === "pending"
-                  ? "wait"
-                  : "pointer",
+              cursor: confirmDisabled ? "not-allowed" : "pointer",
               boxSizing: "border-box",
             }}
           >
@@ -919,20 +1061,21 @@ export default function ResultCard({
                 fontWeight: 500,
                 lineHeight: "22px",
                 letterSpacing: 0.16,
-                opacity:
-                  bridgeStatus === "awaiting_signature" ||
-                  bridgeStatus === "pending"
-                    ? 0.4
-                    : 1,
+                opacity: confirmDisabled ? 0.4 : 1,
               }}
             >
               {bridgeStatus === "awaiting_signature"
                 ? "Approve in Wallet..."
                 : bridgeStatus === "pending"
                 ? "Processing..."
+                : confirmSubmitting
+                ? "Processing..."
+                : confirmDisabledReason
+                ? "Unavailable"
                 : "Confirm"}
             </span>
           </button>
+          </div>
         </div>
       ) : (
         <button

@@ -42,7 +42,7 @@ export default function LearnMoreModal({
           top: 60,
           right: 20,
           zIndex: 101,
-          width: 340,
+          width: "min(440px, calc(100vw - 40px))",
           maxHeight: "calc(100vh - 80px)",
           background: theme.background,
           border: `1px solid ${theme.border}`,
@@ -103,69 +103,74 @@ export default function LearnMoreModal({
             }}
           >
             <p style={{ margin: 0 }}>
-              <strong>1. You send NOCK</strong> to the bridge&apos;s multisig
-              address on Nockchain. Your transaction includes your Base wallet
-              address in the transaction data.
+              NockSwap now works in both directions: NOCK ↔ Base. Pick your
+              direction and the flow mirrors itself.
             </p>
-            <p style={{ margin: 0 }}>
-              <strong>2. Bridge operators verify</strong> your transaction. Four
-              trusted ecosystem partners—Zorp, NockBox, Lambda, and
-              SWPS—independently confirm the deposit.
+
+            <p style={{ margin: 0, color: theme.titleColor }}>
+              <strong>Nockchain → Base (deposit)</strong>
             </p>
-            <p style={{ margin: 0 }}>
-              <strong>3. NOCK is minted on Base.</strong> Once verified, the
-              equivalent amount of NOCK (ERC-20) is minted and sent to your Base
-              wallet address.
+            <ol style={{ margin: 0, paddingLeft: 22, listStyle: "decimal" }}>
+              <li style={{ marginBottom: 12 }}>
+                <strong>You send NOCK</strong> to the bridge&apos;s multisig
+                address on Nockchain. Your transaction includes your Base
+                wallet address in the transaction data.
+              </li>
+              <li style={{ marginBottom: 12 }}>
+                <strong>Operators verify your deposit.</strong> Four trusted
+                ecosystem partners—Zorp, NockBox, Lambda, and
+                SWPS—independently confirm it.
+              </li>
+              <li>
+                <strong>NOCK is minted on Base.</strong> Once verified, the
+                equivalent amount of NOCK (ERC-20) is minted and sent to your
+                Base wallet.
+              </li>
+            </ol>
+
+            <p style={{ margin: 0, color: theme.titleColor }}>
+              <strong>Base → Nockchain (withdrawal)</strong>
             </p>
-          </div>
+            <ol style={{ margin: 0, paddingLeft: 22, listStyle: "decimal" }}>
+              <li style={{ marginBottom: 12 }}>
+                <strong>You burn NOCK on Base.</strong> Your transaction
+                includes your Nockchain address. The ERC-20 NOCK is burned to
+                remove it from circulation on Base.
+              </li>
+              <li style={{ marginBottom: 12 }}>
+                <strong>Operators verify the burn.</strong> The same four
+                partners independently confirm it.
+              </li>
+              <li>
+                <strong>NOCK is released on Nockchain.</strong> Once verified,
+                the equivalent amount is sent from the multisig to your
+                Nockchain address.
+              </li>
+            </ol>
 
-          {/* Minimum deposit */}
-          <div
-            style={{
-              width: "100%",
-              fontFamily: "var(--font-inter), sans-serif",
-              fontSize: 15,
-              fontWeight: 500,
-              lineHeight: "22px",
-              letterSpacing: 0.15,
-              color: theme.textColor,
-            }}
-          >
-            <strong>Minimum deposit:</strong> 100,000 NOCK
-          </div>
-
-          {/* Fee */}
-          <div
-            style={{
-              width: "100%",
-              fontFamily: "var(--font-inter), sans-serif",
-              fontSize: 15,
-              fontWeight: 500,
-              lineHeight: "22px",
-              letterSpacing: 0.15,
-              color: theme.textColor,
-            }}
-          >
-            <strong>Fee:</strong> ~0.3% (covers gas costs on Base)
-          </div>
-
-          {/* Please note */}
-          <div
-            style={{
-              width: "100%",
-              fontFamily: "var(--font-inter), sans-serif",
-              fontSize: 15,
-              fontWeight: 500,
-              lineHeight: "22px",
-              letterSpacing: 0.15,
-              color: theme.textColor,
-            }}
-          >
-            <strong>Please note:</strong> Each step may take quite some time
-            depending on network conditions and operator confirmation. There is
-            currently no progress indicator—your NOCK will arrive in your Base
-            wallet once all steps are complete, it is expected to take multiple
-            hours.
+            <p style={{ margin: 0, color: theme.titleColor }}>
+              <strong>Both directions</strong>
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 22, listStyle: "disc" }}>
+              <li style={{ marginBottom: 12 }}>
+                <strong>Minimum:</strong> 100,000 NOCK
+              </li>
+              <li style={{ marginBottom: 12 }}>
+                <strong>Fee:</strong> ~0.3% (covers gas costs)
+              </li>
+              <li style={{ marginBottom: 12 }}>
+                <strong>Timing:</strong> Each step can take a while depending
+                on network conditions and operator confirmation. There is
+                currently no progress indicator—expect your NOCK to arrive
+                after all steps complete, typically several hours.
+              </li>
+              <li>
+                <strong>Settlement:</strong> NockSwap only initiates and
+                confirms the Base side of each transaction. Bridge settlement
+                and final execution are handled by Nockchain and the bridge
+                operators.
+              </li>
+            </ul>
           </div>
 
           {/* Divider */}
