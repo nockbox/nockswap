@@ -829,7 +829,10 @@ export default function SwapCard({
                     opacity: 0.5,
                   }}
                 >
-                  Bridge fee {PROTOCOL_FEE_DISPLAY}
+                  {/* Base→Nock payouts also deduct the Nockchain tx fee (shown at confirm). */}
+                  {isNockchainToBase
+                    ? `Bridge fee ${PROTOCOL_FEE_DISPLAY}`
+                    : `Bridge fee ${PROTOCOL_FEE_DISPLAY} + network fee`}
                 </span>
               </div>
             </div>
