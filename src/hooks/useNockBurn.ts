@@ -12,6 +12,7 @@ import {
   getBridgeNetworkConfig,
   getPreferredBridgeNetworkConfig,
 } from "@/lib/bridgeNetworkConfig";
+import type { ExactNockAmount } from "@/lib/nockAmount";
 
 export function useNockBurn() {
   const { writeContractAsync, isPending } = useWriteContract();
@@ -19,7 +20,7 @@ export function useNockBurn() {
   const chainId = useChainId();
 
   const burnNock = async (
-    amountNock: number,
+    exactAmount: ExactNockAmount,
     destinationNockAddress: string,
     expectedChainId?: number
   ): Promise<string> => {
@@ -49,11 +50,7 @@ export function useNockBurn() {
     const nockAddress = expectedNetwork.nockTokenAddress;
     assertValidNockTokenAddress(nockAddress);
 
-    const wholeNock = Math.floor(amountNock);
-    if (wholeNock <= 0) {
-      throw new Error("Burn amount must be at least 1 whole NOCK");
-    }
-    const amount = nockAmountToTokenUnits(wholeNock);
+    const amount = nockAmountToTokenUnits(exactAmount.baseUnits);
     const lockRoot = await burnLockRootFromRecipientPkh(destinationNockAddress);
 
     const hash = await writeContractAsync({

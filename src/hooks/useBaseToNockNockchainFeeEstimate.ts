@@ -2,13 +2,12 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useChainId } from "wagmi";
-import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { useWallet } from "@/hooks/useWallet";
 import { estimateBaseToNockNockchainFeeNicks } from "@/lib/baseToNockNockchainFee";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 import { bridgeOptionsFromActivationHeights } from "@/lib/bridge";
-import { NICKS_PER_NOCK } from "@/lib/constants";
 import { resolveNockchainGrpcUrl } from "@/lib/nockchainGrpc";
-import { formatNOCK } from "@/lib/utils";
+import { formatNicksAsNock, type ExactNockAmount } from "@/lib/nockAmount";
 import { isNockAddress } from "@/lib/validators";
 
 /**
@@ -17,7 +16,7 @@ import { isNockAddress } from "@/lib/validators";
  * Uses public balance-by-first-name data (same first-name as the bridge multisig).
  */
 export function useBaseToNockNockchainFeeEstimate(
-  amountNock: number | null,
+  amount: ExactNockAmount | null,
   destinationNockAddress: string | null
 ): { display: string; feeNicks: bigint | null; loading: boolean } {
   const { grpcEndpoint, txEngineActivationHeights } = useWallet();
@@ -36,8 +35,7 @@ export function useBaseToNockNockchainFeeEstimate(
 
   const destTrimmed = destinationNockAddress?.trim() ?? "";
   const canFetch =
-    amountNock != null &&
-    amountNock > 0 &&
+    amount !== null &&
     destTrimmed.length > 0 &&
     isNockAddress(destTrimmed) &&
     Boolean(bridgeNetwork) &&
@@ -54,8 +52,7 @@ export function useBaseToNockNockchainFeeEstimate(
 
   useEffect(() => {
     if (
-      amountNock == null ||
-      amountNock <= 0 ||
+      amount === null ||
       !destTrimmed ||
       !isNockAddress(destTrimmed) ||
       !bridgeNetwork ||
@@ -69,7 +66,7 @@ export function useBaseToNockNockchainFeeEstimate(
 
     let cancelled = false;
 
-    const burnedAmountNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
+    const burnedAmountNicks = amount.nicks;
     const txEngineSettings = bridgeOptionsFromActivationHeights(
       txEngineActivationHeights
     ).txEngineSettings;
@@ -84,8 +81,7 @@ export function useBaseToNockNockchainFeeEstimate(
           txEngineSettings,
         });
         if (!cancelled) {
-          const nock = Number(fee) / NOCK_TO_NICKS;
-          setDisplay(`${formatNOCK(nock)} NOCK`);
+          setDisplay(`${formatNicksAsNock(fee)} NOCK`);
           setFeeNicks(fee);
         }
       } catch {
@@ -104,7 +100,7 @@ export function useBaseToNockNockchainFeeEstimate(
       cancelled = true;
     };
   }, [
-    amountNock,
+    amount,
     destTrimmed,
     grpcUrl,
     bridgeNetwork,

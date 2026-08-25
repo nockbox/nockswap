@@ -14,14 +14,13 @@ import {
   nockAmountToTokenUnits,
 } from "@/lib/nockToken";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
+import type { ExactNockAmount } from "@/lib/nockAmount";
 
 function formatEthApprox(wei: bigint): string {
-  const s = formatUnits(wei, 18);
-  const n = Number(s);
-  if (!Number.isFinite(n) || n <= 0) return "0 ETH";
-  const abs = Math.abs(n);
-  const decimals = abs >= 1 ? 4 : abs >= 0.01 ? 5 : 6;
-  return `~${n.toFixed(decimals)} ETH`;
+  if (wei <= 0n) return "0 ETH";
+  const [whole, fraction = ""] = formatUnits(wei, 18).split(".");
+  const visibleFraction = fraction.slice(0, whole === "0" ? 6 : 4).replace(/0+$/, "");
+  return `~${visibleFraction ? `${whole}.${visibleFraction}` : whole} ETH`;
 }
 
 /**
@@ -30,7 +29,7 @@ function formatEthApprox(wei: bigint): string {
  * so on Base the true cost can be slightly higher.
  */
 export function useNockBurnGasEstimate(
-  amountNock: number | null,
+  amount: ExactNockAmount | null,
   destinationNockAddress: string | null,
   expectedChainId?: number
 ): {
@@ -52,19 +51,15 @@ export function useNockBurnGasEstimate(
   const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>();
 
   const amountWei = useMemo(() => {
-    if (
-      amountNock === null ||
-      !Number.isFinite(amountNock) ||
-      amountNock <= 0
-    ) {
+    if (amount === null) {
       return undefined;
     }
     try {
-      return nockAmountToTokenUnits(Math.floor(amountNock));
+      return nockAmountToTokenUnits(amount.baseUnits);
     } catch {
       return undefined;
     }
-  }, [amountNock]);
+  }, [amount]);
 
   useEffect(() => {
     const trimmedDestination = destinationNockAddress?.trim() ?? "";

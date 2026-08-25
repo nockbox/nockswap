@@ -10,7 +10,6 @@ import {
 } from "react";
 import {
   NockchainProvider,
-  NOCK_TO_NICKS,
   WalletNotInstalledError,
   UserRejectedError,
   NoAccountError,
@@ -26,7 +25,6 @@ import type {
 import * as wasm from "@nockbox/iris-sdk/wasm";
 import * as guard from "@nockbox/iris-wasm/iris_wasm.guard";
 
-export { NOCK_TO_NICKS };
 
 function accountAddressString(account: Account): string {
   return String(account.address);
@@ -52,7 +50,7 @@ interface WalletContextType {
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
-  sendTransaction: (to: string, amountInNocks: number) => Promise<string>;
+  sendTransaction: (to: string, amountInNicks: bigint) => Promise<string>;
   signRawTx: (params: SignRawTxParams) => Promise<PbCom2RawTransaction>;
 
   // Helpers
@@ -177,7 +175,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendTransaction = useCallback(
-    async (to: string, amountInNocks: number): Promise<string> => {
+    async (to: string, amountInNicks: bigint): Promise<string> => {
       if (!provider) {
         throw new Error("Wallet not connected");
       }
@@ -186,12 +184,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new NoAccountError();
       }
 
-      // Convert NOCK to nicks
-      const amountInNicks = Math.floor(amountInNocks * NOCK_TO_NICKS);
+      if (amountInNicks <= 0n) {
+        throw new Error("Transaction amount must be positive.");
+      }
 
       const txId = await provider.sendTransaction({
         to: to as Address,
-        amount: String(amountInNicks) as Nicks,
+        amount: amountInNicks.toString() as Nicks,
       });
       return txId;
     },

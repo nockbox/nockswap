@@ -15,24 +15,25 @@ import {
   ASSETS,
   IRIS_CHROME_STORE_URL,
   PROTOCOL_FEE_DISPLAY,
+  MIN_BRIDGE_AMOUNT_NICKS,
   MIN_BRIDGE_AMOUNT_NOCK,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { parseAmount } from "@/lib/utils";
+import type { ExactNockAmount } from "@/lib/nockAmount";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
   onSwapError?: (error: string) => void;
   onPrepareSuccess?: (preview: TransactionPreview) => void;
   onPrepareBurnSuccess?: (payload: {
-    amountNock: number;
+    amount: ExactNockAmount;
     destinationNockAddress: string;
   }) => void;
   prepareTransaction: (
     destinationAddress: string,
-    amountInNocks: number
+    amountInNicks: bigint
   ) => Promise<TransactionPreview>;
   bridgeStatus: BridgeStatus;
 }
@@ -54,20 +55,15 @@ export default function SwapCard({
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
     usePrice(NOCK_COINGECKO_ID);
-  const nockPrice = priceData?.usd ?? 0;
+  const nockPrice = priceData?.usd ?? "0";
 
   // Swap form state and handlers
   const {
     fromAmount,
     toAmount,
-    setFromAmount,
-    setToAmount,
-    isFromUsdMode,
-    isToUsdMode,
+    exactFromAmount,
+    amountError,
     handleFromAmountChange,
-    handleToAmountChange,
-    handleFromToggle,
-    handleToToggle,
     handleAmountBlur,
     fromSecondary,
     toSecondary,
@@ -82,21 +78,12 @@ export default function SwapCard({
   // Bridge configuration check
   const { isBridgeConfigured } = useBridge();
 
-  // Balance check not currently doable
-  // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
+  // Nockchain balance is loaded by the connected wallet path.
   const hasInsufficientFunds = false;
 
-  // Check if amount is below minimum bridge amount
-  const parsedFromAmount = parseAmount(fromAmount);
-  // Convert to NOCK if in USD mode
-  const amountInNock =
-    isFromUsdMode && nockPrice > 0
-      ? parsedFromAmount / nockPrice
-      : parsedFromAmount;
   const isBelowMinimum =
-    fromAmount.trim().length > 0 &&
-    amountInNock > 0 &&
-    amountInNock < MIN_BRIDGE_AMOUNT_NOCK;
+    exactFromAmount !== null &&
+    exactFromAmount.nicks < MIN_BRIDGE_AMOUNT_NICKS;
 
   // Address validation
   const isAddressValid =
@@ -115,26 +102,25 @@ export default function SwapCard({
       return;
     }
 
-    // Get the amount in NOCK (convert from USD if needed)
-    const nockAmount = isFromUsdMode
-      ? parseAmount(fromAmount) / nockPrice
-      : parseAmount(fromAmount);
-
-    if (nockAmount <= 0) {
+    if (!exactFromAmount || amountError) {
+      setShowAmountError(true);
       return;
     }
 
     try {
       if (!isNockchainToBase) {
         onPrepareBurnSuccess?.({
-          amountNock: nockAmount,
+          amount: exactFromAmount,
           destinationNockAddress: receivingAddress.trim(),
         });
         return;
       }
 
       // Prepare transaction and show confirmation screen
-      const preview = await prepareTransaction(receivingAddress, nockAmount);
+      const preview = await prepareTransaction(
+        receivingAddress,
+        exactFromAmount.nicks
+      );
       if (preview && onPrepareSuccess) {
         onPrepareSuccess(preview);
       }
@@ -249,21 +235,6 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                {isFromUsdMode && (
-                  <span
-                    style={{
-                      fontFamily: "var(--font-lora), serif",
-                      fontSize: 36,
-                      fontWeight: 600,
-                      lineHeight: "40px",
-                      letterSpacing: -1.44,
-                      color: theme.textPrimary,
-                      opacity: fromAmount ? 1 : 0.4,
-                    }}
-                  >
-                    $
-                  </span>
-                )}
                 <input
                   type="text"
                   value={fromAmount}
@@ -272,8 +243,10 @@ export default function SwapCard({
                     setShowAmountError(false);
                   }}
                   onBlur={() => {
-                    handleAmountBlur(fromAmount, setFromAmount);
-                    if (isBelowMinimum) setShowAmountError(true);
+                    handleAmountBlur();
+                    if (amountError || isBelowMinimum) {
+                      setShowAmountError(true);
+                    }
                   }}
                   placeholder="0"
                   className="amount-input"
@@ -393,18 +366,7 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                <button
-                  onClick={handleFromToggle}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center" }}>
                   <span
                     style={{
                       color: theme.textPrimary,
@@ -424,17 +386,8 @@ export default function SwapCard({
                       fromSecondary
                     )}
                   </span>
-                  <Image
-                    src={ASSETS.upDownArrows2}
-                    alt="Toggle USD/NOCK"
-                    width={14}
-                    height={14}
-                    style={{
-                      opacity: 0.5,
-                    }}
-                  />
-                </button>
-                {showAmountError && isBelowMinimum && (
+                </div>
+                {showAmountError && (amountError || isBelowMinimum) && (
                   <span
                     style={{
                       color: theme.error,
@@ -447,7 +400,8 @@ export default function SwapCard({
                       letterSpacing: 0.13,
                     }}
                   >
-                    Minimum {MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK
+                    {amountError ??
+                      `Minimum ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`}
                   </span>
                 )}
               </div>
@@ -515,26 +469,11 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                {isToUsdMode && (
-                  <span
-                    style={{
-                      fontFamily: "var(--font-lora), serif",
-                      fontSize: 36,
-                      fontWeight: 600,
-                      lineHeight: "40px",
-                      letterSpacing: -1.44,
-                      color: theme.textPrimary,
-                      opacity: toAmount ? 1 : 0.4,
-                    }}
-                  >
-                    $
-                  </span>
-                )}
                 <input
                   type="text"
                   value={toAmount}
-                  onChange={(e) => handleToAmountChange(e.target.value)}
-                  onBlur={() => handleAmountBlur(toAmount, setToAmount)}
+                  readOnly
+                  aria-label="Amount received after bridge fee"
                   placeholder="0"
                   className="amount-input"
                   style={{
@@ -653,18 +592,7 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                <button
-                  onClick={handleToToggle}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center" }}>
                   <span
                     style={{
                       color: theme.textPrimary,
@@ -684,16 +612,7 @@ export default function SwapCard({
                       toSecondary
                     )}
                   </span>
-                  <Image
-                    src={ASSETS.upDownArrows2}
-                    alt="Toggle USD/NOCK"
-                    width={14}
-                    height={14}
-                    style={{
-                      opacity: 0.5,
-                    }}
-                  />
-                </button>
+                </div>
                 <span
                   style={{
                     color: theme.textPrimary,
@@ -936,7 +855,12 @@ export default function SwapCard({
           // Connected - check if form is complete
           const hasAmount = fromAmount.trim().length > 0;
           const hasAddress = receivingAddress.trim().length > 0;
-          isDisabled = !hasAmount || !hasAddress || isBelowMinimum;
+          isDisabled =
+            !hasAmount ||
+            !hasAddress ||
+            exactFromAmount === null ||
+            amountError !== null ||
+            isBelowMinimum;
         }
 
         return (

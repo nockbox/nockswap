@@ -27,7 +27,7 @@ function sdkBridgeConfigFromNetwork(config: BridgeNetworkConfig): BridgeConfig {
     chainTag: "65736162",
     versionTag: "0",
     minAmountNicks: String(
-      BigInt(MIN_BRIDGE_AMOUNT_NOCK) * NICKS_PER_NOCK
+      MIN_BRIDGE_AMOUNT_NOCK * NICKS_PER_NOCK
     ) as Nicks,
     expectedLockRoot: config.bridgeLockRoot,
   };

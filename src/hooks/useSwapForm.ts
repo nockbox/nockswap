@@ -1,40 +1,27 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useCallback, useState } from "react";
+import { bridgeFeeNicksCeil, bridgeFeeNicksFloor } from "@/lib/constants";
 import {
-  calcUSD,
-  calcNOCK,
-  formatNOCK,
-  parseAmount,
-  formatWithCommas,
-  applyFee,
-  reverseFee,
-} from "@/lib/utils";
+  type ExactNockAmount,
+  formatApproximateUsd,
+  formatNockDecimal,
+  formatNicksAsNock,
+  parseExactNockAmount,
+} from "@/lib/nockAmount";
 
 interface UseSwapFormOptions {
-  nockPrice: number;
+  nockPrice: string;
   bridgeFeeRounding?: "floor" | "ceil";
 }
 
 interface UseSwapFormReturn {
-  // Amount state
   fromAmount: string;
   toAmount: string;
-  setFromAmount: (value: string) => void;
-  setToAmount: (value: string) => void;
-
-  // Mode state
-  isFromUsdMode: boolean;
-  isToUsdMode: boolean;
-
-  // Handlers
+  exactFromAmount: ExactNockAmount | null;
+  amountError: string | null;
   handleFromAmountChange: (value: string) => void;
-  handleToAmountChange: (value: string) => void;
-  handleFromToggle: () => void;
-  handleToToggle: () => void;
-  handleAmountBlur: (value: string, setter: (val: string) => void) => void;
-
-  // Computed values
+  handleAmountBlur: () => void;
   fromSecondary: string;
   toSecondary: string;
 }
@@ -45,150 +32,67 @@ export function useSwapForm({
 }: UseSwapFormOptions): UseSwapFormReturn {
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
-  const [isFromUsdMode, setIsFromUsdMode] = useState(false);
-  const [isToUsdMode, setIsToUsdMode] = useState(false);
+  const [exactFromAmount, setExactFromAmount] =
+    useState<ExactNockAmount | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [fromSecondary, setFromSecondary] = useState("$0.00");
+  const [toSecondary, setToSecondary] = useState("$0.00");
 
-  // Convert amount to NOCK regardless of current mode
-  const toNock = useCallback(
-    (amount: number, isUsdMode: boolean): number => {
-      return isUsdMode && nockPrice > 0 ? calcNOCK(amount, nockPrice) : amount;
-    },
-    [nockPrice]
-  );
-
-  // Convert NOCK amount to display value based on mode
-  const fromNock = useCallback(
-    (nockAmount: number, isUsdMode: boolean): number => {
-      return isUsdMode && nockPrice > 0 ? nockAmount * nockPrice : nockAmount;
-    },
-    [nockPrice]
-  );
-
-  // Handle From amount change - calculate To amount
   const handleFromAmountChange = useCallback(
     (value: string) => {
       const cleaned = value.replace(/[^0-9.,]/g, "");
       setFromAmount(cleaned);
 
-      // Auto-calculate "To" amount
-      const numValue = parseAmount(cleaned);
-      if (numValue > 0) {
-        // Convert to NOCK, apply fee, convert to "To" display mode
-        const fromNockValue = toNock(numValue, isFromUsdMode);
-        const toNockValue = applyFee(fromNockValue, bridgeFeeRounding);
-        const toDisplayValue = fromNock(toNockValue, isToUsdMode);
-        setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
-      } else {
+      if (cleaned.replace(/,/g, "").length === 0) {
+        setExactFromAmount(null);
         setToAmount("");
+        setAmountError(null);
+        setFromSecondary("$0.00");
+        setToSecondary("$0.00");
+        return;
+      }
+
+      try {
+        const exact = parseExactNockAmount(cleaned);
+        const fee =
+          bridgeFeeRounding === "ceil"
+            ? bridgeFeeNicksCeil(exact.nicks)
+            : bridgeFeeNicksFloor(exact.nicks);
+        const netNicks = exact.nicks - fee;
+        if (netNicks <= 0n) {
+          throw new Error("The bridge fee must be lower than the amount.");
+        }
+
+        setExactFromAmount(exact);
+        setToAmount(formatNicksAsNock(netNicks));
+        setAmountError(null);
+        setFromSecondary(formatApproximateUsd(exact.nicks, nockPrice));
+        setToSecondary(formatApproximateUsd(netNicks, nockPrice));
+      } catch (error) {
+        setExactFromAmount(null);
+        setToAmount("");
+        setAmountError(
+          error instanceof Error ? error.message : "Enter a valid NOCK amount."
+        );
+        setFromSecondary("$0.00");
+        setToSecondary("$0.00");
       }
     },
-    [bridgeFeeRounding, isFromUsdMode, isToUsdMode, toNock, fromNock]
+    [bridgeFeeRounding, nockPrice]
   );
 
-  // Handle To amount change - calculate From amount
-  const handleToAmountChange = useCallback(
-    (value: string) => {
-      const cleaned = value.replace(/[^0-9.,]/g, "");
-      setToAmount(cleaned);
-
-      // Auto-calculate From amount (reverse calculation)
-      const numValue = parseAmount(cleaned);
-      if (numValue > 0) {
-        // Convert to NOCK, reverse fee, convert to From display mode
-        const toNockValue = toNock(numValue, isToUsdMode);
-        const fromNockValue = reverseFee(toNockValue);
-        const fromDisplayValue = fromNock(fromNockValue, isFromUsdMode);
-        setFromAmount(formatWithCommas(fromDisplayValue.toFixed(2)));
-      } else {
-        setFromAmount("");
-      }
-    },
-    [isFromUsdMode, isToUsdMode, toNock, fromNock]
-  );
-
-  // Toggle handlers for USD/NOCK mode
-  const handleFromToggle = useCallback(() => {
-    const currentValue = parseAmount(fromAmount);
-    if (currentValue > 0 && nockPrice > 0) {
-      if (isFromUsdMode) {
-        // Converting from USD to NOCK
-        const nockValue = calcNOCK(currentValue, nockPrice);
-        setFromAmount(formatWithCommas(nockValue.toFixed(2)));
-        // Recalculate "To" amount with new "From" mode
-        const toNockValue = applyFee(nockValue, bridgeFeeRounding);
-        const toDisplayValue = fromNock(toNockValue, isToUsdMode);
-        setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
-      } else {
-        // Converting from NOCK to USD
-        const usdValue = currentValue * nockPrice;
-        setFromAmount(formatWithCommas(usdValue.toFixed(2)));
-        // Recalculate To amount with new From mode
-        const toNockValue = applyFee(currentValue, bridgeFeeRounding);
-        const toDisplayValue = fromNock(toNockValue, isToUsdMode);
-        setToAmount(formatWithCommas(toDisplayValue.toFixed(2)));
-      }
+  const handleAmountBlur = useCallback(() => {
+    if (exactFromAmount) {
+      setFromAmount(formatNockDecimal(exactFromAmount.canonical));
     }
-    setIsFromUsdMode(!isFromUsdMode);
-  }, [bridgeFeeRounding, fromAmount, nockPrice, isFromUsdMode, isToUsdMode, fromNock]);
-
-  const handleToToggle = useCallback(() => {
-    const currentValue = parseAmount(toAmount);
-    if (currentValue > 0 && nockPrice > 0) {
-      if (isToUsdMode) {
-        // Converting from USD to NOCK
-        const nockValue = calcNOCK(currentValue, nockPrice);
-        setToAmount(formatWithCommas(nockValue.toFixed(2)));
-        // Recalculate "From" amount with new "To" mode
-        const fromNockValue = reverseFee(nockValue);
-        const fromDisplayValue = fromNock(fromNockValue, isFromUsdMode);
-        setFromAmount(formatWithCommas(fromDisplayValue.toFixed(2)));
-      } else {
-        // Converting from NOCK to USD
-        const usdValue = currentValue * nockPrice;
-        setToAmount(formatWithCommas(usdValue.toFixed(2)));
-        // Recalculate "From" amount with new "To" mode
-        const fromNockValue = reverseFee(currentValue);
-        const fromDisplayValue = fromNock(fromNockValue, isFromUsdMode);
-        setFromAmount(formatWithCommas(fromDisplayValue.toFixed(2)));
-      }
-    }
-    setIsToUsdMode(!isToUsdMode);
-  }, [toAmount, nockPrice, isToUsdMode, isFromUsdMode, fromNock]);
-
-  // Format on blur
-  const handleAmountBlur = useCallback(
-    (value: string, setter: (val: string) => void) => {
-      if (value) {
-        setter(formatWithCommas(value));
-      }
-    },
-    []
-  );
-
-  // Calculate the secondary display value based on input mode
-  const fromSecondary = useMemo(() => {
-    return isFromUsdMode
-      ? formatNOCK(calcNOCK(parseAmount(fromAmount), nockPrice)) + " NOCK"
-      : calcUSD(parseAmount(fromAmount), nockPrice);
-  }, [fromAmount, nockPrice, isFromUsdMode]);
-
-  const toSecondary = useMemo(() => {
-    return isToUsdMode
-      ? formatNOCK(calcNOCK(parseAmount(toAmount), nockPrice)) + " NOCK"
-      : calcUSD(parseAmount(toAmount), nockPrice);
-  }, [toAmount, nockPrice, isToUsdMode]);
+  }, [exactFromAmount]);
 
   return {
     fromAmount,
     toAmount,
-    setFromAmount,
-    setToAmount,
-    isFromUsdMode,
-    isToUsdMode,
+    exactFromAmount,
+    amountError,
     handleFromAmountChange,
-    handleToAmountChange,
-    handleFromToggle,
-    handleToToggle,
     handleAmountBlur,
     fromSecondary,
     toSecondary,

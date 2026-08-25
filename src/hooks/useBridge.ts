@@ -9,7 +9,7 @@ import {
   RpcError,
   UserRejectedError,
 } from "@nockbox/iris-sdk";
-import { useWallet, NOCK_TO_NICKS } from "@/hooks/useWallet";
+import { useWallet } from "@/hooks/useWallet";
 import { base58 } from "@scure/base";
 import type {
   BlockHeight,
@@ -28,9 +28,8 @@ import {
   verifyBeltEncoding,
 } from "@/lib/bridge";
 import { isEvmAddress } from "@/lib/validators";
-import {
-  MIN_BRIDGE_AMOUNT_NOCK,
-} from "@/lib/constants";
+import { MIN_BRIDGE_AMOUNT_NICKS } from "@/lib/constants";
+import { formatNicksAsNock } from "@/lib/nockAmount";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 export type BridgeStatus =
@@ -85,7 +84,7 @@ export interface UseBridgeReturn {
   // Actions
   prepareTransaction: (
     destinationAddress: string,
-    amountInNocks: number
+    amountInNicks: bigint
   ) => Promise<TransactionPreview>;
   confirmTransaction: () => Promise<BridgeResult | undefined>;
   cancelTransaction: () => void;
@@ -207,7 +206,7 @@ export function useBridge(): UseBridgeReturn {
   const prepareTransaction = useCallback(
     async (
       destinationAddress: string,
-      amountInNocks: number
+      amountInNicks: bigint
     ): Promise<TransactionPreview> => {
       // Pre-flight checks
       if (!isConnected || !address) {
@@ -242,13 +241,13 @@ export function useBridge(): UseBridgeReturn {
         }
 
         // Validate amount
-        if (amountInNocks < MIN_BRIDGE_AMOUNT_NOCK) {
+        if (amountInNicks < MIN_BRIDGE_AMOUNT_NICKS) {
           throw new Error(
-            `Minimum bridge amount is ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`
+            `Minimum bridge amount is ${formatNicksAsNock(
+              MIN_BRIDGE_AMOUNT_NICKS
+            )} NOCK`
           );
         }
-
-        const amountInNicks = BigInt(Math.floor(amountInNocks * NOCK_TO_NICKS));
         await initWasm();
         const wasm = await import("@nockbox/iris-sdk/wasm");
 
@@ -325,9 +324,11 @@ export function useBridge(): UseBridgeReturn {
 
         // Sort notes by largest first
         const noteIndices = userNotes.map((_, i) => i);
-        noteIndices.sort((a, b) =>
-          Number(BigInt(userNotes[b].assets) - BigInt(userNotes[a].assets))
-        );
+        noteIndices.sort((a, b) => {
+          const left = BigInt(userNotes[a].assets);
+          const right = BigInt(userNotes[b].assets);
+          return left === right ? 0 : left > right ? -1 : 1;
+        });
 
         // Estimate fee based on number of inputs
         const estimateFeeForNotes = (numNotes: number): bigint => {
@@ -373,11 +374,12 @@ export function useBridge(): UseBridgeReturn {
         const finalTarget = amountInNicks + finalEstimatedFee;
 
         if (selectedTotal < finalTarget) {
-          const totalNock = Number(totalAvailable) / NOCK_TO_NICKS;
-          const targetNock = Number(finalTarget) / NOCK_TO_NICKS;
           throw new Error(
-            `Insufficient balance. You have ${totalNock.toLocaleString()} NOCK total, ` +
-              `but need ${targetNock.toLocaleString()} NOCK (amount + fee).`
+            `Insufficient balance. You have ${formatNicksAsNock(
+              totalAvailable
+            )} NOCK total, but need ${formatNicksAsNock(
+              finalTarget
+            )} NOCK (amount + fee).`
           );
         }
 

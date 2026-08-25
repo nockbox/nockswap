@@ -1,11 +1,9 @@
-import { NOCK_TO_NICKS } from "@nockbox/iris-sdk";
-
 // Bridge fee: 195 nicks per 65_536 nicks (1 NOCK). Slightly under 0.3%; integer nicks avoids float drift.
 export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
 export const PROTOCOL_FEE_DISPLAY = "0.3%";
 
-/** 1 NOCK = 2^16 nicks (`NOCK_TO_NICKS` from @nockbox/iris-sdk). */
-export const NICKS_PER_NOCK = BigInt(NOCK_TO_NICKS);
+/** 1 NOCK = 2^16 nicks. */
+export const NICKS_PER_NOCK = 65_536n;
 
 /** Floor nicks to a whole-NOCK boundary so bridge fee math matches on-chain integer semantics. */
 export function toWholeNockNicks(nicks: bigint): bigint {
@@ -34,8 +32,9 @@ export function bridgeFeeNicksCeil(amountInNicks: bigint): bigint {
   );
 }
 
-export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
-
+export const MIN_BRIDGE_AMOUNT_NOCK = 100_000n;
+export const MIN_BRIDGE_AMOUNT_NICKS =
+  MIN_BRIDGE_AMOUNT_NOCK * NICKS_PER_NOCK;
 
 /**
  * Launch gate for the retained-contract Base-to-Nockchain withdrawal path.

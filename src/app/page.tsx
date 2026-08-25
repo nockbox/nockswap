@@ -9,15 +9,18 @@ import {
   bridgeFeeNicksCeil,
   bridgeFeeNicksFloor,
   PROTOCOL_FEE_DISPLAY,
-  NICKS_PER_NOCK,
 } from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { useNockBurn } from "@/hooks/useNockBurn";
 import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
 import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import { useBaseToNockNockchainFeeEstimate } from "@/hooks/useBaseToNockNockchainFeeEstimate";
-import { NOCK_TO_NICKS } from "@/hooks/useWallet";
-import { truncateAddress, formatNOCK } from "@/lib/utils";
+import {
+  formatNockDecimal,
+  formatNicksAsNock,
+  type ExactNockAmount,
+} from "@/lib/nockAmount";
+import { truncateAddress } from "@/lib/utils";
 import { isEvmWalletUserRejection } from "@/lib/evmWalletErrors";
 import { transactionExplorerUrl } from "@/lib/blockExplorer";
 import {
@@ -31,7 +34,7 @@ type ResultState =
   | { type: "confirming"; preview: TransactionPreview }
   | {
       type: "confirming_burn";
-      amountNock: number;
+      amount: ExactNockAmount;
       destinationNockAddress: string;
     }
   | { type: "success"; result: BridgeResult }
@@ -39,7 +42,7 @@ type ResultState =
   | {
       type: "base_to_nock_success";
       txHash: string;
-      amountNock: number;
+      amount: ExactNockAmount;
       destinationNockAddress: string;
       chainId: number;
       burnNetworkFeeDisplay: string;
@@ -49,7 +52,7 @@ type ResultState =
   | {
       type: "base_to_nock_failed";
       message: string;
-      amountNock: number;
+      amount: ExactNockAmount;
       destinationNockAddress: string;
       burnNetworkFeeDisplay: string;
       nockchainNetworkFeeDisplay: string;
@@ -67,7 +70,7 @@ export default function Home() {
   );
   const expectedBurnChainId = expectedBurnNetwork?.chainId;
   const burnGasAmountNock =
-    resultState.type === "confirming_burn" ? resultState.amountNock : null;
+    resultState.type === "confirming_burn" ? resultState.amount : null;
   const burnDestinationNockAddress =
     resultState.type === "confirming_burn"
       ? resultState.destinationNockAddress
@@ -85,7 +88,7 @@ export default function Home() {
     feeNicks: nockchainFeeNicksEstimate,
     loading: nockchainNetworkFeeLoading,
   } = useBaseToNockNockchainFeeEstimate(
-    resultState.type === "confirming_burn" ? resultState.amountNock : null,
+    resultState.type === "confirming_burn" ? resultState.amount : null,
     resultState.type === "confirming_burn"
       ? resultState.destinationNockAddress
       : null
@@ -100,7 +103,7 @@ export default function Home() {
   };
 
   const handlePrepareBurnSuccess = (payload: {
-    amountNock: number;
+    amount: ExactNockAmount;
     destinationNockAddress: string;
   }) => {
     setResultState({ type: "confirming_burn", ...payload });
@@ -131,9 +134,9 @@ export default function Home() {
 
   const handleConfirmBurn = async () => {
     if (resultState.type !== "confirming_burn") return;
-    const { amountNock, destinationNockAddress } = resultState;
+    const { amount, destinationNockAddress } = resultState;
     const sharedBurnResultData = {
-      amountNock,
+      amount,
       destinationNockAddress,
       burnNetworkFeeDisplay,
       nockchainNetworkFeeDisplay,
@@ -146,7 +149,7 @@ export default function Home() {
         );
       }
       const txHash = await burnNock(
-        amountNock,
+        amount,
         destinationNockAddress,
         expectedBurnChainId
       );
@@ -175,28 +178,22 @@ export default function Home() {
     }
   };
 
-  // Convert nicks to NOCK
-  const nicksToNock = (nicks: bigint) => Number(nicks) / NOCK_TO_NICKS;
-
-  // Calculate Nockchain -> Base amount after protocol bridge fee.
-  const calculateAmountAfterBridgeFee = (amountInNicks: bigint): number => {
+  const calculateAmountAfterBridgeFee = (amountInNicks: bigint): string => {
     const bridgeFeeNicks = bridgeFeeNicksFloor(amountInNicks);
-    const amountAfterFee = amountInNicks - bridgeFeeNicks;
-    return Number(amountAfterFee) / NOCK_TO_NICKS;
+    return formatNicksAsNock(amountInNicks - bridgeFeeNicks);
   };
 
   const calculateBaseToNockAmountAfterFees = (
-    amountNock: number,
+    amount: ExactNockAmount,
     nockchainFeeNicks: bigint | null
-  ): number => {
-    const amountInNicks = BigInt(Math.floor(amountNock)) * NICKS_PER_NOCK;
-    const bridgeFeeNicks = bridgeFeeNicksCeil(amountInNicks);
-    const amountAfterBridgeFee = amountInNicks - bridgeFeeNicks;
+  ): string => {
+    const bridgeFeeNicks = bridgeFeeNicksCeil(amount.nicks);
+    const amountAfterBridgeFee = amount.nicks - bridgeFeeNicks;
     const amountAfterAllFees =
       nockchainFeeNicks !== null
         ? amountAfterBridgeFee - nockchainFeeNicks
         : amountAfterBridgeFee;
-    return Number(amountAfterAllFees) / NOCK_TO_NICKS;
+    return formatNicksAsNock(amountAfterAllFees);
   };
 
   return (
@@ -281,7 +278,7 @@ export default function Home() {
                     ? resultState.nockchainNetworkFeeDisplay
                     : undefined
                 }
-                totalNock={`${formatNOCK(calculateBaseToNockAmountAfterFees(resultState.amountNock, resultState.nockchainFeeNicks))} NOCK`}
+                totalNock={`${calculateBaseToNockAmountAfterFees(resultState.amount, resultState.nockchainFeeNicks)} NOCK`}
                 totalUsd=""
                 receivingAddress={truncateAddress(resultState.destinationNockAddress)}
                 fullReceivingAddress={resultState.destinationNockAddress}
@@ -307,8 +304,8 @@ export default function Home() {
                 isDarkMode={isDarkMode}
                 status="confirming"
                 networkFeePercent={PROTOCOL_FEE_DISPLAY}
-                networkFeeAmount={`${formatNOCK(nicksToNock(resultState.preview.fee))} NOCK`}
-                totalNock={`${formatNOCK(nicksToNock(resultState.preview.amountInNicks))} NOCK`}
+                networkFeeAmount={`${formatNicksAsNock(resultState.preview.fee)} NOCK`}
+                totalNock={`${formatNicksAsNock(resultState.preview.amountInNicks)} NOCK`}
                 totalUsd=""
                 receivingAddress={truncateAddress(resultState.preview.destinationAddress)}
                 fullReceivingAddress={resultState.preview.destinationAddress}
@@ -326,7 +323,7 @@ export default function Home() {
                 flowDirection="base_to_nock"
                 networkFeePercent={PROTOCOL_FEE_DISPLAY}
                 networkFeeAmount={burnNetworkFeeDisplay}
-                totalNock={`${formatNOCK(resultState.amountNock)} NOCK`}
+                totalNock={`${formatNockDecimal(resultState.amount.canonical)} NOCK`}
                 totalUsd=""
                 receivingAddress={truncateAddress(
                   resultState.destinationNockAddress
@@ -337,9 +334,7 @@ export default function Home() {
                 onHomeClick={handleCancel}
                 onConfirm={handleConfirmBurn}
                 bridgeStatus={bridgeStatus}
-                confirmingAmountInNicks={
-                  BigInt(Math.floor(resultState.amountNock)) * NICKS_PER_NOCK
-                }
+                confirmingAmountInNicks={resultState.amount.nicks}
                 nockchainNetworkFeeAmount={nockchainNetworkFeeDisplay}
                 nockchainNetworkFeeLoading={nockchainNetworkFeeLoading}
                 confirmingNockchainFeeNicks={nockchainFeeNicksEstimate}
@@ -360,12 +355,12 @@ export default function Home() {
                 networkFeePercent={PROTOCOL_FEE_DISPLAY}
                 networkFeeAmount={
                   resultState.type === "success"
-                    ? `${formatNOCK(nicksToNock(resultState.result.fee))} NOCK`
+                    ? `${formatNicksAsNock(resultState.result.fee)} NOCK`
                     : "0 NOCK"
                 }
                 totalNock={
                   resultState.type === "success"
-                    ? `${formatNOCK(calculateAmountAfterBridgeFee(resultState.result.amountInNicks))} NOCK`
+                    ? `${calculateAmountAfterBridgeFee(resultState.result.amountInNicks)} NOCK`
                     : "0 NOCK"
                 }
                 totalUsd=""

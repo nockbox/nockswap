@@ -11,7 +11,6 @@ import {
   bridgeFeeNicksCeil,
   toWholeNockNicks,
 } from "@/lib/constants";
-import { NOCK_TO_NICKS } from "@/hooks/useWallet";
 import type { BridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 function parseDigestString(value: string, field: string): Digest {
@@ -284,9 +283,6 @@ export async function estimateBaseToNockNockchainFeeNicks(
     unsafeOriginPageCount,
     count: selected.length,
     perNoteAssetsNicks,
-    perNoteAssetsNock: perNoteAssetsNicks.map(
-      (n) => Number(BigInt(n)) / NOCK_TO_NICKS
-    ),
   });
 
   let feeNicks = 256n;

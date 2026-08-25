@@ -1,5 +1,5 @@
 import { base58 } from "@scure/base";
-import { encodeFunctionData, isAddress, parseUnits } from "viem";
+import { encodeFunctionData, isAddress } from "viem";
 import type { Digest } from "@nockbox/iris-wasm";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
@@ -81,10 +81,10 @@ export function assertValidNockTokenAddress(address: string): void {
   }
 }
 
-/** NOCK amount (e.g. from the swap input) to uint256 token units (16 decimals). */
-export function nockAmountToTokenUnits(nockAmount: number): bigint {
-  if (!Number.isFinite(nockAmount) || nockAmount <= 0) {
-    throw new Error("Burn amount must be a positive number");
+/** Exact Base token units from the validated decimal amount pipeline. */
+export function nockAmountToTokenUnits(amountBaseUnits: bigint): bigint {
+  if (amountBaseUnits <= 0n) {
+    throw new Error("Burn amount must be positive.");
   }
-  return parseUnits(nockAmount.toString(), NOCK_TOKEN_DECIMALS);
+  return amountBaseUnits;
 }

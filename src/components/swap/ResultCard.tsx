@@ -11,8 +11,7 @@ import {
 import { getCardTheme } from "@/lib/theme";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { TransactionPreview, BridgeStatus, BridgeResult } from "@/hooks/useBridge";
-import { NOCK_TO_NICKS } from "@/hooks/useWallet";
-import { formatNOCK } from "@/lib/utils";
+import { formatNicksAsNock } from "@/lib/nockAmount";
 
 type ResultStatus = "success" | "failed" | "confirming";
 type FlowDirection = "nock_to_base" | "base_to_nock";
@@ -94,8 +93,7 @@ export default function ResultCard({
       flowDirection === "base_to_nock"
         ? bridgeFeeNicksCeil(amountInNicks)
         : bridgeFeeNicksFloor(amountInNicks);
-    const bridgeFeeNock = Number(bridgeFeeNicks) / NOCK_TO_NICKS;
-    return `${formatNOCK(bridgeFeeNock)} NOCK`;
+    return `${formatNicksAsNock(bridgeFeeNicks)} NOCK`;
   };
 
   // Calculate amount after bridge fee deduction
@@ -105,14 +103,12 @@ export default function ResultCard({
       const nockchainFeeNicks = confirmingNockchainFeeNicks ?? 0n;
       const amountAfterFees =
         confirmingAmountInNicks - bridgeFeeNicks - nockchainFeeNicks;
-      const amountNock = Number(amountAfterFees) / NOCK_TO_NICKS;
-      return `${formatNOCK(amountNock)} NOCK`;
+      return `${formatNicksAsNock(amountAfterFees)} NOCK`;
     }
     if (!preview) return totalNock;
     const bridgeFeeNicks = bridgeFeeNicksFloor(preview.amountInNicks);
     const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
-    const amountNock = Number(amountAfterFee) / NOCK_TO_NICKS;
-    return `${formatNOCK(amountNock)} NOCK`;
+    return `${formatNicksAsNock(amountAfterFee)} NOCK`;
   };
 
   const handleCopyAddress = async () => {
