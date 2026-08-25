@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
@@ -17,11 +19,14 @@ import {
   PROTOCOL_FEE_DISPLAY,
   MIN_BRIDGE_AMOUNT_NICKS,
   MIN_BRIDGE_AMOUNT_NOCK,
+  BASE_TO_NOCK_WITHDRAWALS_ENABLED,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { ExactNockAmount } from "@/lib/nockAmount";
+
+type SwapDirection = "nock_to_base" | "base_to_nock";
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -47,8 +52,9 @@ export default function SwapCard({
   bridgeStatus,
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
-  // Currently only supports Nockchain -> Base direction
-  const isNockchainToBase = true;
+  const [direction, setDirection] =
+    useState<SwapDirection>("nock_to_base");
+  const isNockchainToBase = direction === "nock_to_base";
   const [showAddressError, setShowAddressError] = useState(false);
   const [showAmountError, setShowAmountError] = useState(false);
 
@@ -65,6 +71,7 @@ export default function SwapCard({
     amountError,
     handleFromAmountChange,
     handleAmountBlur,
+    reset: resetForm,
     fromSecondary,
     toSecondary,
   } = useSwapForm({
@@ -72,8 +79,15 @@ export default function SwapCard({
     bridgeFeeRounding: isNockchainToBase ? "floor" : "ceil",
   });
 
-  // Wallet connection
-  const { isInstalled, isConnected, isConnecting, connect } = useWallet();
+  // Direction-specific wallet connection
+  const {
+    isInstalled: isIrisInstalled,
+    isConnected: isIrisConnected,
+    isConnecting: isIrisConnecting,
+    connect: connectIris,
+  } = useWallet();
+  const { isConnected: isBaseConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
 
   // Bridge configuration check
   const { isBridgeConfigured } = useBridge();
@@ -95,7 +109,24 @@ export default function SwapCard({
 
   const theme = getSwapCardTheme(isDarkMode);
 
+  const handleDirectionChange = () => {
+    setDirection((current) =>
+      current === "nock_to_base" ? "base_to_nock" : "nock_to_base"
+    );
+    setReceivingAddress("");
+    setShowAddressError(false);
+    setShowAmountError(false);
+    resetForm();
+  };
+
   const handleSwap = async () => {
+    if (!isNockchainToBase && !BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
+      onSwapError?.(
+        "Base-to-Nockchain withdrawals are not enabled for this release."
+      );
+      return;
+    }
+
     // Validate address before proceeding
     if (isAddressValid === false || receivingAddress.trim().length === 0) {
       setShowAddressError(true);
@@ -309,7 +340,7 @@ export default function SwapCard({
                         letterSpacing: 0.13,
                       }}
                     >
-                      Nockchain
+                      {isNockchainToBase ? "Nockchain" : "Base"}
                     </span>
                   </div>
                   <div
@@ -341,12 +372,16 @@ export default function SwapCard({
                         border: `2px solid ${theme.networkBadgeBorder}`,
                         overflow: "hidden",
                         boxSizing: "border-box",
-                        background: "#1a1a1a",
+                        background: isNockchainToBase ? "#1a1a1a" : "#fff",
                       }}
                     >
                       <Image
-                        src={ASSETS.nockchainIcon}
-                        alt="Nockchain"
+                        src={
+                          isNockchainToBase
+                            ? ASSETS.nockchainIcon
+                            : ASSETS.baseLogo
+                        }
+                        alt={isNockchainToBase ? "Nockchain" : "Base"}
                         width={18}
                         height={18}
                         style={{
@@ -408,8 +443,15 @@ export default function SwapCard({
             </div>
           </div>
 
-          {/* Swap direction indicator (disabled - one-way only for now) */}
-          <div
+          {/* Direction selector resets every amount and destination field. */}
+          <button
+            type="button"
+            onClick={handleDirectionChange}
+            aria-label={
+              isNockchainToBase
+                ? "Switch to Base to Nockchain"
+                : "Switch to Nockchain to Base"
+            }
             style={{
               display: "flex",
               padding: 8,
@@ -418,18 +460,21 @@ export default function SwapCard({
               borderRadius: 32,
               background: theme.swapButtonBg,
               border: "none",
+              cursor: "pointer",
             }}
           >
             <Image
               src={ASSETS.downArrow}
-              alt="To"
+              alt=""
               width={24}
               height={24}
               style={{
                 filter: isDarkMode ? "invert(1)" : "none",
+                transform: isNockchainToBase ? "none" : "rotate(180deg)",
+                transition: "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
               }}
             />
-          </div>
+          </button>
 
           {/* TO input wrapper + Receiving address */}
           <div
@@ -535,7 +580,7 @@ export default function SwapCard({
                         letterSpacing: 0.13,
                       }}
                     >
-                      Base
+                      {isNockchainToBase ? "Base" : "Nockchain"}
                     </span>
                   </div>
                   <div
@@ -567,12 +612,16 @@ export default function SwapCard({
                         border: `2px solid ${theme.networkBadgeBorder}`,
                         overflow: "hidden",
                         boxSizing: "border-box",
-                        background: "#fff",
+                        background: isNockchainToBase ? "#fff" : "#1a1a1a",
                       }}
                     >
                       <Image
-                        src={ASSETS.baseLogo}
-                        alt="Base"
+                        src={
+                          isNockchainToBase
+                            ? ASSETS.baseLogo
+                            : ASSETS.nockchainIcon
+                        }
+                        alt={isNockchainToBase ? "Base" : "Nockchain"}
                         width={18}
                         height={18}
                         style={{
@@ -820,39 +869,14 @@ export default function SwapCard({
 
         {/* CTA Button */}
         {(() => {
-        // Determine button state and text
-        let buttonText = "Swap with Iris";
+        let buttonText = isNockchainToBase
+          ? "Review bridge"
+          : "Review withdrawal";
         let buttonAction: () => void = handleSwap;
         let isDisabled = false;
         let isLoading = false;
 
-        // Bridge status takes priority when active
-        if (bridgeStatus === "preparing") {
-          buttonText = "Preparing...";
-          isDisabled = true;
-          isLoading = true;
-        } else if (bridgeStatus === "pending") {
-          buttonText = "Processing...";
-          isDisabled = true;
-          isLoading = true;
-        } else if (bridgeStatus === "awaiting_signature") {
-          buttonText = "Approve in Wallet...";
-          isDisabled = true;
-          isLoading = true;
-        } else if (!isInstalled) {
-          buttonText = "Install Iris Wallet";
-          buttonAction = () => {
-            window.open(IRIS_CHROME_STORE_URL, "_blank");
-          };
-        } else if (!isConnected) {
-          buttonText = isConnecting ? "Connecting..." : "Iris Connect";
-          buttonAction = connect;
-          isDisabled = isConnecting;
-        } else if (!isBridgeConfigured) {
-          buttonText = "Bridge Error";
-          isDisabled = true;
-        } else {
-          // Connected - check if form is complete
+        const gateIncompleteForm = () => {
           const hasAmount = fromAmount.trim().length > 0;
           const hasAddress = receivingAddress.trim().length > 0;
           isDisabled =
@@ -861,6 +885,48 @@ export default function SwapCard({
             exactFromAmount === null ||
             amountError !== null ||
             isBelowMinimum;
+        };
+
+        if (!isNockchainToBase) {
+          if (!BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
+            buttonText = "Base withdrawals unavailable";
+            isDisabled = true;
+          } else if (!isBaseConnected) {
+            buttonText = "Connect Base wallet";
+            buttonAction = openConnectModal ?? (() => undefined);
+            isDisabled = openConnectModal === undefined;
+          } else if (!isBridgeConfigured) {
+            buttonText = "Bridge configuration unavailable";
+            isDisabled = true;
+          } else {
+            gateIncompleteForm();
+          }
+        } else if (bridgeStatus === "preparing") {
+          buttonText = "Preparing...";
+          isDisabled = true;
+          isLoading = true;
+        } else if (bridgeStatus === "pending") {
+          buttonText = "Processing...";
+          isDisabled = true;
+          isLoading = true;
+        } else if (bridgeStatus === "awaiting_signature") {
+          buttonText = "Approve in Iris...";
+          isDisabled = true;
+          isLoading = true;
+        } else if (!isIrisInstalled) {
+          buttonText = "Install Iris Wallet";
+          buttonAction = () => {
+            window.open(IRIS_CHROME_STORE_URL, "_blank");
+          };
+        } else if (!isIrisConnected) {
+          buttonText = isIrisConnecting ? "Connecting..." : "Connect Iris";
+          buttonAction = connectIris;
+          isDisabled = isIrisConnecting;
+        } else if (!isBridgeConfigured) {
+          buttonText = "Bridge configuration unavailable";
+          isDisabled = true;
+        } else {
+          gateIncompleteForm();
         }
 
         return (
@@ -882,7 +948,7 @@ export default function SwapCard({
               boxSizing: "border-box",
             }}
           >
-            {!isConnected && !isConnecting && (
+            {isNockchainToBase && !isIrisConnected && !isIrisConnecting && (
               <Image
                 src="/assets/iris-logo.svg"
                 alt="Iris"

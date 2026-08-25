@@ -22,6 +22,7 @@ interface UseSwapFormReturn {
   amountError: string | null;
   handleFromAmountChange: (value: string) => void;
   handleAmountBlur: () => void;
+  reset: () => void;
   fromSecondary: string;
   toSecondary: string;
 }
@@ -81,6 +82,15 @@ export function useSwapForm({
     [bridgeFeeRounding, nockPrice]
   );
 
+  const reset = useCallback(() => {
+    setFromAmount("");
+    setToAmount("");
+    setExactFromAmount(null);
+    setAmountError(null);
+    setFromSecondary("$0.00");
+    setToSecondary("$0.00");
+  }, []);
+
   const handleAmountBlur = useCallback(() => {
     if (exactFromAmount) {
       setFromAmount(formatNockDecimal(exactFromAmount.canonical));
@@ -94,6 +104,7 @@ export function useSwapForm({
     amountError,
     handleFromAmountChange,
     handleAmountBlur,
+    reset,
     fromSecondary,
     toSecondary,
   };
