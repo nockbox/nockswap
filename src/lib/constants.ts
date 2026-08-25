@@ -36,6 +36,14 @@ export function bridgeFeeNicksCeil(amountInNicks: bigint): bigint {
 
 export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
 
+
+/**
+ * Launch gate for the retained-contract Base-to-Nockchain withdrawal path.
+ *
+ * Keep this false until the immutable Iris SDK release, exact calldata path,
+ * backend readiness checks, and browser lifecycle certification are complete.
+ */
+export const BASE_TO_NOCK_WITHDRAWALS_ENABLED = false;
 export const NOCK_COINGECKO_ID = "nockchain";
 
 // Iris Wallet

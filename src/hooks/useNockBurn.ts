@@ -7,6 +7,7 @@ import {
   nockBurnAbi,
   nockAmountToTokenUnits,
 } from "@/lib/nockToken";
+import { BASE_TO_NOCK_WITHDRAWALS_ENABLED } from "@/lib/constants";
 import {
   getBridgeNetworkConfig,
   getPreferredBridgeNetworkConfig,
@@ -22,6 +23,12 @@ export function useNockBurn() {
     destinationNockAddress: string,
     expectedChainId?: number
   ): Promise<string> => {
+    if (!BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
+      throw new Error(
+        "Base-to-Nockchain withdrawals are not enabled for this release."
+      );
+    }
+
     const expectedNetwork =
       expectedChainId === undefined
         ? getBridgeNetworkConfig(chainId) ?? getPreferredBridgeNetworkConfig()
