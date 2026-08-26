@@ -130,10 +130,21 @@ export function assertArtifactTreeExcludesSecret(
 export const test = base.extend<{ testWallet: TestWalletFixture }>({
   testWallet: async ({ page }, runFixture) => {
     const config = loadE2eOrchestratorConfig();
+    const showControls = async () => {
+      if ((await page.getByTestId("e2e-wallet-probe").count()) === 0) {
+        await page.getByTestId("e2e-wallet-toggle").click();
+      }
+      await expect(page.getByTestId("e2e-wallet-probe")).toBeVisible();
+    };
+    const hideControls = async () => {
+      await page.getByTestId("e2e-wallet-hide").click();
+      await expect(page.getByTestId("e2e-wallet-toggle")).toBeVisible();
+    };
     await runFixture({
       account: config.account,
       chainId: config.chainId,
       async connect() {
+        await showControls();
         await page.getByTestId("e2e-wallet-connect").click();
         await expect(page.getByTestId("e2e-wallet-status")).toHaveText(
           "connected"
@@ -144,8 +155,10 @@ export const test = base.extend<{ testWallet: TestWalletFixture }>({
         await expect(page.getByTestId("e2e-wallet-chain")).toHaveText(
           String(config.chainId)
         );
+        await hideControls();
       },
       async disconnect() {
+        await showControls();
         await page.getByTestId("e2e-wallet-disconnect").click();
         await expect(page.getByTestId("e2e-wallet-status")).toHaveText(
           "disconnected"
@@ -153,6 +166,7 @@ export const test = base.extend<{ testWallet: TestWalletFixture }>({
         await expect(page.getByTestId("e2e-wallet-account")).toHaveText(
           "disconnected"
         );
+        await hideControls();
       },
     });
   },

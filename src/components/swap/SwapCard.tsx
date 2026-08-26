@@ -171,6 +171,8 @@ export default function SwapCard({
 
   return (
     <div
+      data-testid="swap-card"
+      data-direction={direction}
       style={{
         display: "flex",
         width: "100%",
@@ -267,6 +269,8 @@ export default function SwapCard({
                 }}
               >
                 <input
+                  aria-label="Amount to send"
+                  data-testid="swap-amount"
                   type="text"
                   value={fromAmount}
                   onChange={(e) => {
@@ -424,6 +428,8 @@ export default function SwapCard({
                 </div>
                 {showAmountError && (amountError || isBelowMinimum) && (
                   <span
+                    data-testid="swap-amount-error"
+                    role="alert"
                     style={{
                       color: theme.error,
                       textAlign: "right",
@@ -445,6 +451,7 @@ export default function SwapCard({
 
           {/* Direction selector resets every amount and destination field. */}
           <button
+            data-testid="swap-direction"
             type="button"
             onClick={handleDirectionChange}
             aria-label={
@@ -519,6 +526,7 @@ export default function SwapCard({
                   value={toAmount}
                   readOnly
                   aria-label="Amount received after bridge fee"
+                  data-testid="swap-quote"
                   placeholder="0"
                   className="amount-input"
                   style={{
@@ -784,6 +792,12 @@ export default function SwapCard({
                 )}
               </div>
               <input
+                aria-label={
+                  isNockchainToBase
+                    ? "Base receiving address"
+                    : "Nockchain receiving address"
+                }
+                data-testid="swap-destination"
                 type="text"
                 value={receivingAddress}
                 onChange={(e) => handleAddressChange(e.target.value)}
@@ -931,6 +945,8 @@ export default function SwapCard({
 
         return (
           <button
+            aria-busy={isLoading}
+            data-testid="swap-primary-action"
             onClick={buttonAction}
             disabled={isDisabled || isLoading}
             style={{

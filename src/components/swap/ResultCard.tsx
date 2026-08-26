@@ -165,6 +165,10 @@ export default function ResultCard({
 
   return (
     <div
+      data-testid="result-card"
+      data-result-status={status}
+      data-flow-direction={flowDirection}
+      data-bridge-status={bridgeStatus ?? ""}
       style={{
         display: "flex",
         width: "100%",
@@ -218,6 +222,7 @@ export default function ResultCard({
           }}
         >
           <span
+            data-testid="result-status"
             style={{
               fontFamily: "var(--font-lora), serif",
               fontSize: isMobile ? 32 : 36,
@@ -236,6 +241,8 @@ export default function ResultCard({
           </span>
           {!isSuccess && !isConfirming && errorMessage && (
             <span
+              data-testid="result-error"
+              role="alert"
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
@@ -784,6 +791,8 @@ export default function ResultCard({
               />
             </div>
             <span
+              data-testid="result-destination"
+              title={fullReceivingAddress || receivingAddress}
               style={{
                 color: theme.textPrimary,
                 fontFamily: "var(--font-inter), sans-serif",
@@ -855,6 +864,8 @@ export default function ResultCard({
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span
+                data-testid="result-transaction"
+                title={fullTransactionId || transactionId}
                 style={{
                   color: theme.textPrimary,
                   fontFamily: "var(--font-inter), sans-serif",
@@ -938,6 +949,8 @@ export default function ResultCard({
         <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
           {confirmDisabledReason && (
             <div
+              data-testid="result-blocker"
+              role="status"
               style={{
                 color: theme.textPrimary,
                 opacity: 0.5,
@@ -952,6 +965,7 @@ export default function ResultCard({
           <div style={{ display: "flex", gap: 12, width: "100%" }}>
           {/* Cancel button */}
           <button
+            data-testid="result-cancel"
             onClick={onHomeClick}
             style={{
               display: "flex",
@@ -986,6 +1000,7 @@ export default function ResultCard({
 
           {/* Confirm button */}
           <button
+            data-testid="result-confirm"
             onClick={onConfirm}
             disabled={confirmDisabled}
             style={{
@@ -1032,6 +1047,7 @@ export default function ResultCard({
         </div>
       ) : (
         <button
+          data-testid="result-home"
           onClick={onHomeClick}
           style={{
             display: "flex",

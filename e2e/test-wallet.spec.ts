@@ -1,26 +1,30 @@
-import { expect, test } from "./fixtures/test-wallet";
+import { test } from "./fixtures/diagnostics";
+import { SwapPage } from "./pages/swap-page";
 
-test("deterministic wallet connects, disconnects, and reconnects", async ({
+test("withdrawal controls and deterministic wallet survive rerenders", async ({
   page,
   testWallet,
+  diagnostics,
 }) => {
-  await page.goto("/");
-  await expect(page.getByTestId("e2e-wallet-probe")).toBeVisible();
-  await expect(page.getByTestId("e2e-wallet-status")).toHaveText(
-    "disconnected"
-  );
-  await expect(page.getByTestId("e2e-wallet-chain")).toHaveText(
-    String(testWallet.chainId)
-  );
+  const swap = new SwapPage(page, testWallet);
+  await swap.goto();
 
-  await testWallet.connect();
-  await testWallet.disconnect();
-  await testWallet.connect();
+  await swap.enterExactAmount("100001");
+  await swap.enterDestination(
+    "nock1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+  );
+  await swap.selectDirection("base_to_nock");
+  const resetForm = await swap.readForm();
+  if (resetForm.amount !== "" || resetForm.destination !== "") {
+    throw new Error("direction change did not reset amount and destination");
+  }
 
-  await expect(page.getByTestId("e2e-wallet-account")).toHaveText(
-    testWallet.account
-  );
-  await expect(page.getByTestId("e2e-wallet-chain")).toHaveText(
-    String(testWallet.chainId)
-  );
+  await swap.connectBaseWallet();
+  await swap.expectPrimaryAction("Base withdrawals unavailable", false);
+  await swap.disconnectBaseWallet();
+  await swap.connectBaseWallet();
+
+  await diagnostics.captureCheckpoint("base-wallet-connected");
+  await diagnostics.assertViewportFits();
+  diagnostics.assertNoCriticalConsole();
 });
