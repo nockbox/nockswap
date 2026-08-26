@@ -7,6 +7,7 @@ import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { ThemeProvider } from "./ThemeProvider";
 import { WalletProvider } from "@/contexts/WalletContext";
 import { wagmiConfig } from "@/lib/wagmiConfig";
+import { E2eWalletProbe } from "@/components/e2e/E2eWalletProbe";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -26,7 +27,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
           <WalletProvider>
-            <ThemeProvider>{children}</ThemeProvider>
+            <ThemeProvider>
+              {children}
+              <E2eWalletProbe />
+            </ThemeProvider>
           </WalletProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
