@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const metadataUrl = new URL("../vendor/iris-sdk-0.3.1.json", import.meta.url);
+const metadataUrl = new URL("../vendor/iris-sdk-0.3.3.json", import.meta.url);
 const tarballUrl = new URL(
-  "../vendor/nockbox-iris-sdk-0.3.1.tgz",
+  "../vendor/nockbox-iris-sdk-0.3.3.tgz",
   import.meta.url
 );
 const packageUrl = new URL("../package.json", import.meta.url);
@@ -24,12 +24,12 @@ test("NockSwap pins the verified immutable Iris withdrawal artifact", async () =
   };
 
   assert.equal(metadata.package_name, "@nockbox/iris-sdk");
-  assert.equal(metadata.package_version, "0.3.1");
+  assert.equal(metadata.package_version, "0.3.3");
   assert.match(metadata.git_revision, /^[0-9a-f]{40}$/);
-  assert.equal(metadata.tarball, "nockbox-iris-sdk-0.3.1.tgz");
+  assert.equal(metadata.tarball, "nockbox-iris-sdk-0.3.3.tgz");
   assert.equal(createHash("sha256").update(tarball).digest("hex"), metadata.sha256);
   assert.equal(
     packageJson.dependencies["@nockbox/iris-sdk"],
-    "file:vendor/nockbox-iris-sdk-0.3.1.tgz"
+    "file:vendor/nockbox-iris-sdk-0.3.3.tgz"
   );
 });

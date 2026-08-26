@@ -5,14 +5,16 @@ import { defineConfig, devices } from "@playwright/test";
 import { loadE2eOrchestratorConfig } from "./e2e/fixtures/test-wallet";
 
 const orchestrator = loadE2eOrchestratorConfig();
+const webUrl = new URL(orchestrator.baseUrl);
+const webPort = webUrl.port || "3000";
+const webHost = webUrl.hostname === "localhost" ? "localhost" : "127.0.0.1";
 
 export default defineConfig({
   testDir: "./e2e",
   testMatch: /.*\.spec\.ts/,
-  fullyParallel: false,
+  timeout: orchestrator.timeoutMs,
   workers: 1,
   retries: 0,
-  timeout: 60_000,
   expect: { timeout: 10_000 },
   outputDir: path.join(orchestrator.artifactDir, "test-results"),
   globalTeardown: "./e2e/fixtures/test-wallet.ts",
@@ -25,6 +27,12 @@ export default defineConfig({
       },
     ],
   ],
+  webServer: {
+    command: `npm run dev -- --hostname ${webHost} --port ${webPort}`,
+    url: orchestrator.baseUrl,
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
   use: {
     baseURL: orchestrator.baseUrl,
     actionTimeout: 10_000,
@@ -40,6 +48,7 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
+      testIgnore: /(^|\/)withdrawal\.spec\.ts$/,
       use: { ...devices["Pixel 7"] },
     },
   ],

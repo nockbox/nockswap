@@ -29,6 +29,19 @@ export interface WithdrawalReferences {
   transaction: string | null;
 }
 
+export interface BrowserObservedWithdrawal {
+  calldata: string;
+  submittedTransactionHash: string;
+  transactionHash: string;
+  blockNumber: string;
+  blockHash: string;
+  logIndex: number;
+  baseEventId: string;
+  nockTransactionId: string;
+  nockBlockId: string;
+  historyStates: string[];
+}
+
 export class SwapPage {
   readonly page: Page;
   readonly card: Locator;
@@ -140,9 +153,11 @@ export class SwapPage {
     return state;
   }
 
-  async expectLifecycleState(state: WithdrawalUiState) {
-    await expect(this.lifecycleState).toHaveAttribute("data-state", state);
-    await expect(this.lifecycleState).toBeVisible();
+  async expectLifecycleState(state: WithdrawalUiState, timeout?: number) {
+    await expect(this.lifecycleState).toHaveAttribute("data-state", state, {
+      timeout,
+    });
+    await expect(this.lifecycleState).toBeVisible({ timeout });
   }
 
   async readBlockers(): Promise<string[]> {
@@ -172,6 +187,42 @@ export class SwapPage {
       transaction: await optionalReference(
         this.page.getByTestId("result-transaction")
       ),
+    };
+  }
+
+  async readBrowserEvidence(): Promise<BrowserObservedWithdrawal> {
+    const required = async (name: string) => {
+      const value = await this.resultCard.getAttribute(name);
+      if (!value) throw new Error(`Result card is missing ${name}`);
+      return value;
+    };
+    const history = this.page.getByTestId("withdrawal-history").locator("li");
+    const historyStates = await history.allTextContents();
+    const nockchainReference = this.page.getByTestId("nockchain-reference");
+    if (
+      (await nockchainReference.count()) === 0 ||
+      !(await nockchainReference.isVisible())
+    ) {
+      throw new Error("Result card is missing Nockchain reference");
+    }
+    const nockchain = (await nockchainReference.textContent())?.trim();
+    if (!nockchain) throw new Error("Result card is missing Nockchain reference");
+    const [nockTransactionId, nockBlockId = ""] = nockchain
+      .replace("Nockchain transaction: ", "")
+      .split(" · block ");
+    return {
+      calldata: await required("data-calldata"),
+      submittedTransactionHash: await required(
+        "data-submitted-transaction-hash"
+      ),
+      transactionHash: await required("data-transaction-hash"),
+      blockNumber: await required("data-block-number"),
+      blockHash: await required("data-block-hash"),
+      logIndex: Number.parseInt(await required("data-log-index"), 10),
+      baseEventId: await required("data-base-event-id"),
+      nockTransactionId,
+      nockBlockId,
+      historyStates: historyStates.map((value) => value.split(":")[0].trim()),
     };
   }
 

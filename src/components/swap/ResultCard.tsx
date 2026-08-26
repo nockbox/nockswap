@@ -48,6 +48,15 @@ interface ResultCardProps {
     detail: string;
     observedAt: number;
   }>;
+  browserEvidence?: {
+    calldata: string;
+    submittedTransactionHash: string;
+    transactionHash: string;
+    blockNumber: string | null;
+    blockHash: string | null;
+    logIndex: number | null;
+    baseEventId: string | null;
+  };
   onHomeClick?: () => void;
   onConfirm?: () => Promise<void>;
   preview?: TransactionPreview;
@@ -79,6 +88,7 @@ export default function ResultCard({
   nockBlockId,
   lifecycleDetail,
   lifecycleHistory,
+  browserEvidence,
   onHomeClick,
   onConfirm,
   preview,
@@ -213,6 +223,15 @@ export default function ResultCard({
 
   return (
     <div
+      data-calldata={browserEvidence?.calldata}
+      data-submitted-transaction-hash={
+        browserEvidence?.submittedTransactionHash
+      }
+      data-transaction-hash={browserEvidence?.transactionHash}
+      data-block-number={browserEvidence?.blockNumber ?? undefined}
+      data-block-hash={browserEvidence?.blockHash ?? undefined}
+      data-log-index={browserEvidence?.logIndex ?? undefined}
+      data-base-event-id={browserEvidence?.baseEventId ?? undefined}
       data-testid="result-card"
       data-result-status={status}
       data-flow-direction={flowDirection}

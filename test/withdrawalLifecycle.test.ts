@@ -263,7 +263,7 @@ function network(): BridgeNetworkConfig {
     publicStatusUrl: "http://127.0.0.1:8080/status",
     withdrawalWireProtocol: "WithdrawalWireV1",
     withdrawalPolicyId: "withdrawal-policy-v1",
-    irisSdkVersion: "0.3.1",
+    irisSdkVersion: "0.3.3",
   };
 }
 
@@ -280,7 +280,7 @@ function readiness(): PublicBridgeReadiness {
     withdrawalsEnabled: true,
     withdrawalWireProtocol: "WithdrawalWireV1",
     withdrawalPolicyId: "withdrawal-policy-v1",
-    irisSdkVersion: "0.3.1",
+    irisSdkVersion: "0.3.3",
     reason: null,
   };
 }

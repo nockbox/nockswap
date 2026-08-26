@@ -44,12 +44,14 @@ test("orchestrator manifest and nonsecret environment agree exactly", () => {
     NOCKSWAP_E2E_ACCOUNT: ACCOUNT,
     NOCKSWAP_E2E_PRIVATE_KEY: TEST_KEY,
     NOCKSWAP_E2E_CONTRACT_ALLOWLIST: CONTRACT,
+    NOCKSWAP_E2E_TIMEOUT_MS: "900000",
     NOCKSWAP_E2E_ARTIFACT_DIR: artifactDir,
   });
 
   assert.equal(config.account, ACCOUNT);
   assert.equal(config.chainId, 31338);
   assert.deepEqual(config.contracts, [CONTRACT]);
+  assert.equal(config.timeoutMs, 900_000);
 });
 
 test("artifact canary scan rejects either private-key representation", () => {

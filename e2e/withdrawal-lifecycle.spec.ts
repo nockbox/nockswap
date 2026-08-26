@@ -96,7 +96,7 @@ test("pending withdrawal survives reload and confirms only with terminal proof",
           withdrawalsEnabled: true,
           withdrawalWireProtocol: "WithdrawalWireV1",
           withdrawalPolicyId: "withdrawal-policy-v1",
-          irisSdkVersion: "0.3.1",
+          irisSdkVersion: "0.3.3",
           reason: null,
         }),
       });

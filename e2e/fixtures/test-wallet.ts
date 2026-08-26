@@ -31,6 +31,7 @@ export interface E2eOrchestratorConfig {
   account: Address;
   privateKey: Hex;
   contracts: readonly Address[];
+  timeoutMs: number;
   artifactDir: string;
 }
 
@@ -63,6 +64,10 @@ export function loadE2eOrchestratorConfig(
     environment,
     "NOCKSWAP_E2E_CONTRACT_ALLOWLIST"
   );
+  const timeoutMs = Number(required(environment, "NOCKSWAP_E2E_TIMEOUT_MS"));
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("NOCKSWAP_E2E_TIMEOUT_MS must be a positive integer");
+  }
   const runtime = resolveTestWalletRuntime({
     NODE_ENV: "test",
     NEXT_PUBLIC_NOCKSWAP_E2E: "1",
@@ -100,6 +105,7 @@ export function loadE2eOrchestratorConfig(
     account: runtime.account,
     privateKey: privateKey as Hex,
     contracts,
+    timeoutMs,
     artifactDir: path.resolve(
       required(environment, "NOCKSWAP_E2E_ARTIFACT_DIR")
     ),
@@ -194,24 +200,34 @@ function parseManifest(text: string): ManifestDocument {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("NOCKSWAP_E2E_MANIFEST must contain a JSON object");
   }
-  const candidate = value as Partial<ManifestDocument> & {
+  const candidate = value as Partial<Omit<ManifestDocument, "contracts">> & {
+    contracts?: unknown;
     private_key?: unknown;
   };
   if (candidate.private_key !== undefined) {
     throw new Error("NOCKSWAP_E2E_MANIFEST must not contain a private key");
   }
+  const contracts = Array.isArray(candidate.contracts)
+    ? candidate.contracts
+    : typeof candidate.contracts === "object" &&
+      candidate.contracts !== null
+    ? Object.values(candidate.contracts)
+    : [];
   if (
     candidate.schema_version !== 1 ||
     typeof candidate.base_url !== "string" ||
     typeof candidate.rpc_url !== "string" ||
     typeof candidate.chain_id !== "number" ||
     typeof candidate.account !== "string" ||
-    !Array.isArray(candidate.contracts) ||
-    !candidate.contracts.every((contract) => typeof contract === "string")
+    contracts.length === 0 ||
+    !contracts.every((contract) => typeof contract === "string")
   ) {
     throw new Error("NOCKSWAP_E2E_MANIFEST has an unsupported schema");
   }
-  return candidate as ManifestDocument;
+  return {
+    ...(candidate as Omit<ManifestDocument, "contracts">),
+    contracts: contracts as string[],
+  };
 }
 
 function assertManifestMatches(

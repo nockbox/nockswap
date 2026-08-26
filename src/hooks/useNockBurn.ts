@@ -150,13 +150,18 @@ export function useNockBurn() {
     });
     if (
       transaction.input.toLowerCase() !== encoded.calldata.toLowerCase() ||
-      transaction.from !== getAddress(address) ||
-      transaction.to !== getAddress(expectedNetwork.nockTokenAddress)
+      getAddress(transaction.from) !== getAddress(address) ||
+      transaction.to === null ||
+      getAddress(transaction.to) !== getAddress(expectedNetwork.nockTokenAddress)
     ) {
       throw new Error("Mined Base transaction does not match the prepared burn.");
     }
     const matchingLogs = receipt.logs.flatMap((log) => {
-      if (log.address !== getAddress(expectedNetwork.nockTokenAddress)) return [];
+      if (
+        getAddress(log.address) !== getAddress(expectedNetwork.nockTokenAddress)
+      ) {
+        return [];
+      }
       try {
         const decoded = decodeEventLog({
           abi: burnForWithdrawalAbi,
@@ -165,7 +170,7 @@ export function useNockBurn() {
           eventName: "BurnForWithdrawal",
           strict: true,
         });
-        return decoded.args.burner === getAddress(address) &&
+        return getAddress(decoded.args.burner) === getAddress(address) &&
           decoded.args.amount === amountBaseUnits &&
           decoded.args.lockRoot.toLowerCase() === encoded.commitment.toLowerCase()
           ? [{ log, decoded }]

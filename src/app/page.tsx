@@ -483,6 +483,16 @@ export default function Home() {
                     resultState.record.transactionHash
                   ) ?? undefined
                 }
+                browserEvidence={{
+                  calldata: resultState.record.calldata,
+                  submittedTransactionHash:
+                    resultState.record.submittedTransactionHash,
+                  transactionHash: resultState.record.transactionHash,
+                  blockNumber: resultState.record.blockNumber,
+                  blockHash: resultState.record.blockHash,
+                  logIndex: resultState.record.logIndex,
+                  baseEventId: resultState.record.baseEventId,
+                }}
                 nockTransactionId={
                   resultState.record.nockTransactionId ?? undefined
                 }
