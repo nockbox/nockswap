@@ -82,6 +82,7 @@ interface MatrixScenario {
 }
 
 const manifest = loadManifest();
+const rpcOrigin = new URL(manifest.rpc_url).origin;
 let statusControl = freshStatusControl();
 let statusServer: http.Server;
 let snapshotId = "";
@@ -234,7 +235,7 @@ const scenarios: MatrixScenario[] = [
       expect(record.submittedTransactionHash).toBe(replacement.submittedHash);
       expect(record.transactionHash).toBe(replacement.replacementHash);
       expect(record.transactionHash).not.toBe(record.submittedTransactionHash);
-      return one();
+      return oneBurnAtMostOneSend();
     },
   },
   {
@@ -440,7 +441,7 @@ for (const scenario of orderedScenarios) {
   test(scenario.name, async ({ page, testWallet, diagnostics }, testInfo) => {
     let sendRequests = 0;
     page.on("request", (request) => {
-      if (request.url() !== manifest.rpc_url || request.method() !== "POST") return;
+      if (new URL(request.url()).origin !== rpcOrigin || request.method() !== "POST") return;
       try {
         const payload = request.postDataJSON() as { method?: string };
         if (payload.method === "eth_sendTransaction") sendRequests += 1;
@@ -1128,8 +1129,12 @@ function zero(): ScenarioExpectation {
 }
 
 function one(): ScenarioExpectation {
+  return { burns: "one", sends: "one" };
+}
+function oneBurnAtMostOneSend(): ScenarioExpectation {
   return { burns: "one", sends: "at_most_one" };
 }
+
 
 function atMostOne(): ScenarioExpectation {
   return { burns: "at_most_one", sends: "at_most_one" };
