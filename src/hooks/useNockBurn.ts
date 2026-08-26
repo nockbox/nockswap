@@ -1,11 +1,17 @@
 "use client";
 
-import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
 import {
-  assertValidNockTokenAddress,
-  burnLockRootFromRecipientPkh,
-  nockBurnAbi,
+  useAccount,
+  useChainId,
+  useSendTransaction,
+  useSwitchChain,
+} from "wagmi";
+import type { Hex } from "viem";
+
+import {
+  encodeNockBurnCalldata,
   nockAmountToTokenUnits,
+  resolveNockWithdrawalDestination,
 } from "@/lib/nockToken";
 import { BASE_TO_NOCK_WITHDRAWALS_ENABLED } from "@/lib/constants";
 import {
@@ -14,8 +20,20 @@ import {
 } from "@/lib/bridgeNetworkConfig";
 import type { ExactNockAmount } from "@/lib/nockAmount";
 
+export interface NockBurnSubmission {
+  transactionHash: Hex;
+  calldata: Hex;
+  calldataByteLength: 116;
+  normalizedDestination: string;
+  lockRoot: string;
+  commitment: Hex;
+  amountBaseUnits: string;
+  amountNicks: string;
+}
+
 export function useNockBurn() {
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { address } = useAccount();
+  const { sendTransactionAsync, isPending } = useSendTransaction();
   const { switchChainAsync } = useSwitchChain();
   const chainId = useChainId();
 
@@ -23,18 +41,20 @@ export function useNockBurn() {
     exactAmount: ExactNockAmount,
     destinationNockAddress: string,
     expectedChainId?: number
-  ): Promise<string> => {
+  ): Promise<NockBurnSubmission> => {
     if (!BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
       throw new Error(
         "Base-to-Nockchain withdrawals are not enabled for this release."
       );
+    }
+    if (!address) {
+      throw new Error("Connect the Base wallet before preparing a withdrawal.");
     }
 
     const expectedNetwork =
       expectedChainId === undefined
         ? getBridgeNetworkConfig(chainId) ?? getPreferredBridgeNetworkConfig()
         : getBridgeNetworkConfig(expectedChainId);
-
     if (!expectedNetwork) {
       throw new Error(
         expectedChainId === undefined
@@ -42,25 +62,35 @@ export function useNockBurn() {
           : `No Base bridge network is configured for chain ${expectedChainId}.`
       );
     }
-
     if (chainId !== expectedNetwork.chainId) {
       await switchChainAsync({ chainId: expectedNetwork.chainId });
     }
 
-    const nockAddress = expectedNetwork.nockTokenAddress;
-    assertValidNockTokenAddress(nockAddress);
-
-    const amount = nockAmountToTokenUnits(exactAmount.baseUnits);
-    const lockRoot = await burnLockRootFromRecipientPkh(destinationNockAddress);
-
-    const hash = await writeContractAsync({
-      address: nockAddress as `0x${string}`,
-      abi: nockBurnAbi,
-      functionName: "burn",
-      args: [amount, lockRoot],
+    const amountBaseUnits = nockAmountToTokenUnits(exactAmount.baseUnits);
+    const destination = await resolveNockWithdrawalDestination(
+      destinationNockAddress
+    );
+    const encoded = encodeNockBurnCalldata({
+      nockTokenAddress: expectedNetwork.nockTokenAddress,
+      burnerAddress: address,
+      amountBaseUnits,
+      destination,
+    });
+    const transactionHash = await sendTransactionAsync({
+      to: expectedNetwork.nockTokenAddress as Hex,
+      data: encoded.calldata,
       chainId: expectedNetwork.chainId,
     });
-    return hash;
+    return {
+      transactionHash,
+      calldata: encoded.calldata,
+      calldataByteLength: 116,
+      normalizedDestination: destination.normalizedDestination,
+      lockRoot: destination.lockRoot,
+      commitment: encoded.commitment,
+      amountBaseUnits: amountBaseUnits.toString(),
+      amountNicks: encoded.amountNicks.toString(),
+    };
   };
 
   return { burnNock, isBurning: isPending };

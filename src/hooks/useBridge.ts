@@ -18,6 +18,7 @@ import type {
   Note,
   PbCom2Note,
   PbCom2RawTransaction,
+  RawTxV1,
   SpendCondition,
 } from "@nockbox/iris-sdk/wasm";
 import {
@@ -110,6 +111,7 @@ interface PreparedTransaction {
   destinationAddress: string;
   amountInNicks: bigint;
   notesUsed: number;
+  refundPkh: string;
 }
 
 function parseDigestString(value: string, field: string): Digest {
@@ -400,15 +402,16 @@ export function useBridge(): UseBridgeReturn {
           }
         }
 
+        const validationParams = {
+          inputNotes: selectedNotes,
+          spendConditions: selectedConditions,
+          amountInNicks: amountInNicks.toString() as Nicks,
+          destinationAddress,
+          refundPkh: address,
+        };
         const { transaction: nockchainTx, fee: feeStr } =
           await buildBridgeTransaction(
-            {
-              inputNotes: selectedNotes,
-              spendConditions: selectedConditions,
-              amountInNicks: amountInNicks.toString() as Nicks,
-              destinationAddress,
-              refundPkh: address,
-            },
+            validationParams,
             bridgeConfig,
             bridgeOptions
           );
@@ -418,8 +421,9 @@ export function useBridge(): UseBridgeReturn {
         const rawTxProto = wasm.rawTxToProtobuf(rawTx);
 
         const preValidation = await assertValidBridgeTransaction(
-          rawTxProto,
+          rawTx,
           "pre-signing",
+          validationParams,
           bridgeConfig,
           bridgeOptions
         );
@@ -438,6 +442,7 @@ export function useBridge(): UseBridgeReturn {
           fee,
           destinationAddress,
           amountInNicks,
+          refundPkh: address,
           notesUsed: selectedNotes.length,
         };
 
@@ -548,10 +553,14 @@ export function useBridge(): UseBridgeReturn {
       try {
         // Parse the signed transaction bytes back to RawTx
         const signedRawTx = wasm.rawTxFromProtobuf(signedTxProto);
+        if (!("version" in signedRawTx) || signedRawTx.version !== 1) {
+          throw new Error("Signed bridge transaction is not RawTxV1");
+        }
+        const signedRawTxV1: RawTxV1 = signedRawTx;
 
         // Get the signed TX ID and convert to JAM format for download
         const signedNockchainTx = wasm.rawTxV1ToNockchainTx(
-          signedRawTx as Parameters<typeof wasm.rawTxV1ToNockchainTx>[0]
+          signedRawTxV1
         );
         signedTxId = signedNockchainTx.id || "unknown";
         signedJammedTx = wasm.jam(wasm.nockchainTxToNoun(signedNockchainTx));
@@ -560,12 +569,23 @@ export function useBridge(): UseBridgeReturn {
 
         // Recreate TxBuilder from the signed transaction
         const rebuiltBuilder = wasm.TxBuilder.fromRawTx(
-          signedRawTx,
+          signedRawTxV1,
           txEngineSettings
         );
 
         // Validate the signed transaction
         rebuiltBuilder.validate();
+        await assertValidBridgeTransaction(
+          signedRawTxV1,
+          "post-signing",
+          {
+            destinationAddress: prepared.destinationAddress,
+            amountInNicks: prepared.amountInNicks.toString() as Nicks,
+            refundPkh: prepared.refundPkh,
+          },
+          bridgeConfig,
+          bridgeOptions
+        );
 
         console.log(
           "[Bridge] Transaction validation passed, signed txId:",
@@ -582,12 +602,6 @@ export function useBridge(): UseBridgeReturn {
         );
       }
 
-      await assertValidBridgeTransaction(
-        signedTxProto,
-        "post-signing",
-        bridgeConfig,
-        bridgeOptions
-      );
 
       // Get or create gRPC client
       if (!grpcClientRef.current) {

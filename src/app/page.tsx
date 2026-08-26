@@ -148,14 +148,14 @@ export default function Home() {
           burnContractReadiness.reason ?? "Base-to-Nock contracts are not ready."
         );
       }
-      const txHash = await burnNock(
+      const submission = await burnNock(
         amount,
         destinationNockAddress,
         expectedBurnChainId
       );
       setResultState({
         type: "base_to_nock_success",
-        txHash,
+        txHash: submission.transactionHash,
         chainId: expectedBurnChainId ?? chainId,
         ...sharedBurnResultData,
       });

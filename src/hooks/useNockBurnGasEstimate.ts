@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { encodeFunctionData, formatUnits } from "viem";
+import { formatUnits } from "viem";
+import type { ResolvedWithdrawalDestinationV1 } from "@nockbox/iris-sdk/withdrawal";
 import {
   useAccount,
   useChainId,
@@ -9,9 +10,9 @@ import {
   useEstimateGas,
 } from "wagmi";
 import {
-  burnLockRootFromRecipientPkh,
-  nockBurnAbi,
+  encodeNockBurnCalldata,
   nockAmountToTokenUnits,
+  resolveNockWithdrawalDestination,
 } from "@/lib/nockToken";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 import type { ExactNockAmount } from "@/lib/nockAmount";
@@ -48,7 +49,9 @@ export function useNockBurnGasEstimate(
     expectedNetwork && chainId === expectedNetwork.chainId
       ? expectedNetwork.nockTokenAddress
       : undefined;
-  const [lockRoot, setLockRoot] = useState<`0x${string}` | undefined>();
+  const [destination, setDestination] = useState<
+    ResolvedWithdrawalDestinationV1 | undefined
+  >();
 
   const amountWei = useMemo(() => {
     if (amount === null) {
@@ -64,22 +67,18 @@ export function useNockBurnGasEstimate(
   useEffect(() => {
     const trimmedDestination = destinationNockAddress?.trim() ?? "";
     if (!trimmedDestination) {
-      setLockRoot(undefined);
+      setDestination(undefined);
       return;
     }
 
     let cancelled = false;
-    setLockRoot(undefined);
-    burnLockRootFromRecipientPkh(trimmedDestination)
-      .then((derivedLockRoot) => {
-        if (!cancelled) {
-          setLockRoot(derivedLockRoot);
-        }
+    setDestination(undefined);
+    resolveNockWithdrawalDestination(trimmedDestination)
+      .then((resolved) => {
+        if (!cancelled) setDestination(resolved);
       })
       .catch(() => {
-        if (!cancelled) {
-          setLockRoot(undefined);
-        }
+        if (!cancelled) setDestination(undefined);
       });
 
     return () => {
@@ -88,15 +87,25 @@ export function useNockBurnGasEstimate(
   }, [destinationNockAddress]);
 
   const calldata = useMemo(() => {
-    if (!tokenAddr || amountWei === undefined || lockRoot === undefined) {
+    if (
+      !address ||
+      !tokenAddr ||
+      amountWei === undefined ||
+      destination === undefined
+    ) {
       return undefined;
     }
-    return encodeFunctionData({
-      abi: nockBurnAbi,
-      functionName: "burn",
-      args: [amountWei, lockRoot],
-    });
-  }, [tokenAddr, amountWei, lockRoot]);
+    try {
+      return encodeNockBurnCalldata({
+        nockTokenAddress: tokenAddr,
+        burnerAddress: address,
+        amountBaseUnits: amountWei,
+        destination,
+      }).calldata;
+    } catch {
+      return undefined;
+    }
+  }, [address, tokenAddr, amountWei, destination]);
 
   const estimateEnabled = Boolean(address && tokenAddr && calldata);
 

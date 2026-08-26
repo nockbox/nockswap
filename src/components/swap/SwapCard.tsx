@@ -25,6 +25,7 @@ import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { ExactNockAmount } from "@/lib/nockAmount";
+import { resolveNockWithdrawalDestination } from "@/lib/nockToken";
 
 type SwapDirection = "nock_to_base" | "base_to_nock";
 
@@ -140,9 +141,13 @@ export default function SwapCard({
 
     try {
       if (!isNockchainToBase) {
+        const destination = await resolveNockWithdrawalDestination(
+          receivingAddress
+        );
+        setReceivingAddress(destination.normalizedDestination);
         onPrepareBurnSuccess?.({
           amount: exactFromAmount,
-          destinationNockAddress: receivingAddress.trim(),
+          destinationNockAddress: destination.normalizedDestination,
         });
         return;
       }
