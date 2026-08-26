@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
@@ -120,6 +120,7 @@ export default function Home() {
   );
   const [activeWithdrawal, setActiveWithdrawal] =
     useState<PersistedWithdrawalV1 | null>(null);
+  const burnSubmissionInFlight = useRef(false);
   const persistUpdate = useCallback((record: PersistedWithdrawalV1): boolean => {
     try {
       persistWithdrawalRecord(window.localStorage, record);
@@ -220,7 +221,13 @@ export default function Home() {
   };
 
   const handleConfirmBurn = async () => {
-    if (resultState.type !== "confirming_burn") return;
+    if (
+      resultState.type !== "confirming_burn" ||
+      burnSubmissionInFlight.current
+    ) {
+      return;
+    }
+    burnSubmissionInFlight.current = true;
     const { amount, destinationNockAddress } = resultState;
     const sharedBurnResultData = {
       amount,
@@ -356,6 +363,8 @@ export default function Home() {
         message: errorMessage,
         ...sharedBurnResultData,
       });
+    } finally {
+      burnSubmissionInFlight.current = false;
     }
   };
 

@@ -162,7 +162,7 @@ export class SwapPage {
 
   async readBlockers(): Promise<string[]> {
     const blockers = this.page.locator(
-      '[data-testid="swap-amount-error"], [data-testid="result-error"], [data-testid="result-blocker"]'
+      '[data-testid="swap-amount-error"], [data-testid="swap-destination-error"], [data-testid="result-error"], [data-testid="result-blocker"]'
     );
     const values: string[] = [];
     for (let index = 0; index < (await blockers.count()); index += 1) {

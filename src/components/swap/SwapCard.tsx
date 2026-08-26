@@ -781,6 +781,7 @@ export default function SwapCard({
                 </span>
                 {showAddressError ? (
                   <span
+                    data-testid="swap-destination-error"
                     style={{
                       color: theme.error,
                       textAlign: "right",

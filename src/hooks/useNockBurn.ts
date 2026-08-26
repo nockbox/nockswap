@@ -142,6 +142,7 @@ export function useNockBurn() {
         transactionHash = replacement.transaction.hash;
       },
     });
+    transactionHash = receipt.transactionHash;
     if (receipt.status !== "success") {
       throw new Error("Base burn transaction reverted.");
     }

@@ -48,7 +48,7 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
-      testIgnore: /(^|\/)withdrawal\.spec\.ts$/,
+      testIgnore: /(^|\/)withdrawal(?:-failures)?\.spec\.ts$/,
       use: { ...devices["Pixel 7"] },
     },
   ],
