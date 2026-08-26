@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
-import { useAccount } from "wagmi";
+import {
+  useAccount,
+  useBalance,
+  useReadContract,
+  useSwitchChain,
+} from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
@@ -12,6 +17,7 @@ import {
   TransactionPreview,
   BridgeStatus,
 } from "@/hooks/useBridge";
+import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import {
   NOCK_COINGECKO_ID,
   ASSETS,
@@ -26,8 +32,19 @@ import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { ExactNockAmount } from "@/lib/nockAmount";
 import { resolveNockWithdrawalDestination } from "@/lib/nockToken";
+import { getPreferredBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 type SwapDirection = "nock_to_base" | "base_to_nock";
+
+const erc20BalanceAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
 
 interface SwapCardProps {
   isDarkMode?: boolean;
@@ -87,14 +104,43 @@ export default function SwapCard({
     isConnecting: isIrisConnecting,
     connect: connectIris,
   } = useWallet();
-  const { isConnected: isBaseConnected } = useAccount();
+  const {
+    address: baseAddress,
+    isConnected: isBaseConnected,
+  } = useAccount();
+  const { switchChain } = useSwitchChain();
+  const expectedBaseNetwork = useMemo(
+    () => getPreferredBridgeNetworkConfig(),
+    []
+  );
+  const baseReadiness = useBaseToNockContractReadiness(
+    expectedBaseNetwork?.chainId
+  );
+  const { data: nativeBalance, isLoading: nativeBalanceLoading } = useBalance({
+    address: baseAddress,
+    chainId: expectedBaseNetwork?.chainId,
+    query: { enabled: Boolean(baseAddress && expectedBaseNetwork) },
+  });
+  const { data: tokenBalance, isLoading: tokenBalanceLoading } = useReadContract({
+    address: expectedBaseNetwork?.nockTokenAddress,
+    abi: erc20BalanceAbi,
+    functionName: "balanceOf",
+    args: baseAddress ? [baseAddress] : undefined,
+    chainId: expectedBaseNetwork?.chainId,
+    query: { enabled: Boolean(baseAddress && expectedBaseNetwork) },
+  });
   const { openConnectModal } = useConnectModal();
 
   // Bridge configuration check
   const { isBridgeConfigured } = useBridge();
 
-  // Nockchain balance is loaded by the connected wallet path.
-  const hasInsufficientFunds = false;
+  const balancesLoading = nativeBalanceLoading || tokenBalanceLoading;
+  const hasInsufficientFunds =
+    exactFromAmount !== null &&
+    tokenBalance !== undefined &&
+    tokenBalance < exactFromAmount.baseUnits;
+  const hasInsufficientGas =
+    nativeBalance !== undefined && nativeBalance.value === 0n;
 
   const isBelowMinimum =
     exactFromAmount !== null &&
@@ -914,8 +960,26 @@ export default function SwapCard({
             buttonText = "Connect Base wallet";
             buttonAction = openConnectModal ?? (() => undefined);
             isDisabled = openConnectModal === undefined;
-          } else if (!isBridgeConfigured) {
-            buttonText = "Bridge configuration unavailable";
+          } else if (baseReadiness.switchRequired && expectedBaseNetwork) {
+            buttonText = `Switch to ${expectedBaseNetwork.label}`;
+            buttonAction = () =>
+              switchChain({ chainId: expectedBaseNetwork.chainId });
+          } else if (baseReadiness.loading) {
+            buttonText = baseReadiness.reason ?? "Checking readiness...";
+            isDisabled = true;
+            isLoading = true;
+          } else if (!baseReadiness.ready) {
+            buttonText = baseReadiness.reason ?? "Bridge is not ready";
+            isDisabled = true;
+          } else if (balancesLoading) {
+            buttonText = "Checking balances...";
+            isDisabled = true;
+            isLoading = true;
+          } else if (hasInsufficientFunds) {
+            buttonText = "Insufficient wrapped NOCK balance";
+            isDisabled = true;
+          } else if (hasInsufficientGas) {
+            buttonText = "Insufficient ETH for Base gas";
             isDisabled = true;
           } else {
             gateIncompleteForm();

@@ -37,12 +37,11 @@ export const MIN_BRIDGE_AMOUNT_NICKS =
   MIN_BRIDGE_AMOUNT_NOCK * NICKS_PER_NOCK;
 
 /**
- * Launch gate for the Base-to-Nockchain withdrawal path.
- *
- * Keep this false until the immutable Iris SDK release, exact calldata path,
- * backend readiness checks, and browser lifecycle certification are complete.
+ * Explicit deployment gate for the Base-to-Nockchain withdrawal path. Missing,
+ * malformed, and production-default configuration remain disabled.
  */
-export const BASE_TO_NOCK_WITHDRAWALS_ENABLED = false;
+export const BASE_TO_NOCK_WITHDRAWALS_ENABLED =
+  process.env.NEXT_PUBLIC_BASE_TO_NOCK_WITHDRAWALS_ENABLED === "true";
 export const NOCK_COINGECKO_ID = "nockchain";
 
 // Iris Wallet

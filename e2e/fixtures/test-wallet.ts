@@ -145,7 +145,12 @@ export const test = base.extend<{ testWallet: TestWalletFixture }>({
       chainId: config.chainId,
       async connect() {
         await showControls();
-        await page.getByTestId("e2e-wallet-connect").click();
+        if (
+          (await page.getByTestId("e2e-wallet-status").textContent()) !==
+          "connected"
+        ) {
+          await page.getByTestId("e2e-wallet-connect").click();
+        }
         await expect(page.getByTestId("e2e-wallet-status")).toHaveText(
           "connected"
         );

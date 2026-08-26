@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PageLayout from "@/components/layout/PageLayout";
 import SwapCard from "@/components/swap/SwapCard";
 import ResultCard from "@/components/swap/ResultCard";
@@ -12,6 +12,7 @@ import {
 } from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { useNockBurn } from "@/hooks/useNockBurn";
+import { useWithdrawalStatus } from "@/hooks/useWithdrawalStatus";
 import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
 import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import { useBaseToNockNockchainFeeEstimate } from "@/hooks/useBaseToNockNockchainFeeEstimate";
@@ -27,7 +28,14 @@ import {
   getBridgeNetworkConfig,
   getPreferredBridgeNetworkConfig,
 } from "@/lib/bridgeNetworkConfig";
-import { useChainId } from "wagmi";
+import {
+  loadWithdrawalRecords,
+  persistWithdrawalRecord,
+  transitionWithdrawalRecord,
+  type PersistedWithdrawalV1,
+  type WithdrawalLifecycleStatus,
+} from "@/lib/withdrawalStore";
+import { useAccount, useChainId } from "wagmi";
 
 type ResultState =
   | { type: "idle" }
@@ -40,14 +48,9 @@ type ResultState =
   | { type: "success"; result: BridgeResult }
   | { type: "error"; message: string }
   | {
-      type: "base_to_nock_success";
-      txHash: string;
-      amount: ExactNockAmount;
-      destinationNockAddress: string;
-      chainId: number;
-      burnNetworkFeeDisplay: string;
-      nockchainNetworkFeeDisplay: string;
-      nockchainFeeNicks: bigint | null;
+      type: "base_to_nock_lifecycle";
+      record: PersistedWithdrawalV1;
+      transientError: string | null;
     }
   | {
       type: "base_to_nock_failed";
@@ -57,11 +60,33 @@ type ResultState =
       burnNetworkFeeDisplay: string;
       nockchainNetworkFeeDisplay: string;
       nockchainFeeNicks: bigint | null;
-    };
+    }
+  | { type: "storage_support"; message: string };
+
+function resultCardStatus(
+  status: WithdrawalLifecycleStatus
+): "awaiting_base" | "pending" | "delayed" | "support" | "failed" | "confirmed" {
+  switch (status) {
+    case "awaiting_wallet":
+    case "awaiting_base":
+      return "awaiting_base";
+    case "withdrawal_pending":
+      return "pending";
+    case "confirmed":
+      return "confirmed";
+    case "delayed":
+      return "delayed";
+    case "failed":
+      return "failed";
+    case "support":
+      return "support";
+  }
+}
 
 export default function Home() {
   const [resultState, setResultState] = useState<ResultState>({ type: "idle" });
   const chainId = useChainId();
+  const { address: baseAccount } = useAccount();
   const { confirmTransaction, cancelTransaction, prepareTransaction, status: bridgeStatus } = useBridge();
   const { burnNock, isBurning: isBurnPending } = useNockBurn();
   const expectedBurnNetwork = useMemo(
@@ -93,6 +118,68 @@ export default function Home() {
       ? resultState.destinationNockAddress
       : null
   );
+  const [activeWithdrawal, setActiveWithdrawal] =
+    useState<PersistedWithdrawalV1 | null>(null);
+  const persistUpdate = useCallback((record: PersistedWithdrawalV1): boolean => {
+    try {
+      persistWithdrawalRecord(window.localStorage, record);
+      setActiveWithdrawal(record);
+      return true;
+    } catch (error) {
+      setResultState({
+        type: "storage_support",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Withdrawal history could not be persisted.",
+      });
+      return false;
+    }
+  }, []);
+  const polling = useWithdrawalStatus(
+    activeWithdrawal,
+    expectedBurnNetwork,
+    persistUpdate
+  );
+  const polledRecord = polling?.record;
+  const pollingError = polling?.transientError ?? null;
+
+  useEffect(() => {
+    if (!polledRecord) return;
+    setResultState({
+      type: "base_to_nock_lifecycle",
+      record: polledRecord,
+      transientError: pollingError,
+    });
+  }, [polledRecord, pollingError]);
+
+  useEffect(() => {
+    if (!baseAccount || !expectedBurnNetwork) {
+      setActiveWithdrawal(null);
+      return;
+    }
+    const loaded = loadWithdrawalRecords(
+      window.localStorage,
+      baseAccount,
+      expectedBurnNetwork.chainId,
+      expectedBurnNetwork.nockTokenAddress
+    );
+    if (loaded.issue) {
+      setResultState({ type: "storage_support", message: loaded.issue });
+      return;
+    }
+    const active = loaded.records.find(
+      (record) => record.status !== "confirmed" && record.status !== "failed"
+    );
+    setActiveWithdrawal(active ?? null);
+    if (active) {
+      setResultState({
+        type: "base_to_nock_lifecycle",
+        record: active,
+        transientError: null,
+      });
+    }
+  }, [baseAccount, expectedBurnNetwork]);
 
   const handlePrepareSuccess = (preview: TransactionPreview) => {
     setResultState({ type: "confirming", preview });
@@ -142,24 +229,118 @@ export default function Home() {
       nockchainNetworkFeeDisplay,
       nockchainFeeNicks: nockchainFeeNicksEstimate,
     };
+    let provisionalRecord: PersistedWithdrawalV1 | undefined;
     try {
       if (!burnContractReadiness.ready) {
         throw new Error(
           burnContractReadiness.reason ?? "Base-to-Nock contracts are not ready."
         );
       }
+      if (!baseAccount || !expectedBurnNetwork) {
+        throw new Error("Connected Base account or bridge deployment is unavailable.");
+      }
+      const createdAt = Date.now();
+      const estimatedPayout =
+        amount.nicks -
+        bridgeFeeNicksCeil(amount.nicks) -
+        (nockchainFeeNicksEstimate ?? 0n);
       const submission = await burnNock(
         amount,
         destinationNockAddress,
-        expectedBurnChainId
+        expectedBurnChainId,
+        (prepared) => {
+          provisionalRecord = {
+            schemaVersion: 1,
+            recordId: prepared.submittedTransactionHash,
+            account: baseAccount,
+            chainId: expectedBurnNetwork.chainId,
+            nockTokenAddress: expectedBurnNetwork.nockTokenAddress,
+            messageInboxAddress: expectedBurnNetwork.messageInboxAddress,
+            submittedTransactionHash: prepared.submittedTransactionHash,
+            transactionHash: prepared.submittedTransactionHash,
+            blockNumber: null,
+            blockHash: null,
+            logIndex: null,
+            baseEventId: null,
+            destination: prepared.normalizedDestination,
+            lockRoot: prepared.lockRoot,
+            commitment: prepared.commitment,
+            calldata: prepared.calldata,
+            amountBaseUnits: prepared.amountBaseUnits,
+            amountNicks: prepared.amountNicks,
+            estimatedPayoutNicks:
+              estimatedPayout > 0n ? estimatedPayout.toString() : null,
+            actualPayoutNicks: null,
+            nockTransactionId: null,
+            nockBlockId: null,
+            status: "awaiting_base",
+            createdAt,
+            updatedAt: createdAt,
+            confirmedAt: null,
+            retryAuthorizedAt: null,
+            history: [
+              {
+                status: "awaiting_wallet",
+                observedAt: createdAt,
+                detail: "Wallet accepted one canonical 116-byte burn.",
+              },
+              {
+                status: "awaiting_base",
+                observedAt: createdAt,
+                detail:
+                  "Base transaction submitted. Do not retry while receipt is unknown.",
+              },
+            ],
+          };
+          if (persistUpdate(provisionalRecord)) {
+            setResultState({
+              type: "base_to_nock_lifecycle",
+              record: provisionalRecord,
+              transientError: null,
+            });
+          }
+        }
       );
+      if (!provisionalRecord) {
+        throw new Error("Base submission callback did not persist the transaction.");
+      }
+      const record = transitionWithdrawalRecord(
+        provisionalRecord,
+        "withdrawal_pending",
+        Date.now(),
+        `Verified Base receipt and log ${submission.logIndex}.`,
+        {
+          transactionHash: submission.transactionHash,
+          blockNumber: submission.blockNumber,
+          blockHash: submission.blockHash,
+          logIndex: submission.logIndex,
+          baseEventId: submission.baseEventId,
+        }
+      );
+      if (!persistUpdate(record)) return;
       setResultState({
-        type: "base_to_nock_success",
-        txHash: submission.transactionHash,
-        chainId: expectedBurnChainId ?? chainId,
-        ...sharedBurnResultData,
+        type: "base_to_nock_lifecycle",
+        record,
+        transientError: null,
       });
     } catch (err) {
+      if (provisionalRecord) {
+        const support = transitionWithdrawalRecord(
+          provisionalRecord,
+          "support",
+          Date.now(),
+          err instanceof Error
+            ? `Base receipt requires support: ${err.message}`
+            : "Base receipt outcome is unknown; do not retry."
+        );
+        persistUpdate(support);
+        setResultState({
+          type: "base_to_nock_lifecycle",
+          record: support,
+          transientError: support.history.at(-1)?.detail ?? null,
+        });
+        return;
+      }
       if (isEvmWalletUserRejection(err)) {
         setResultState({
           type: "base_to_nock_failed",
@@ -258,19 +439,67 @@ export default function Home() {
                 prepareTransaction={prepareTransaction}
                 bridgeStatus={bridgeStatus}
               />
-            ) : resultState.type === "base_to_nock_success" ||
-              resultState.type === "base_to_nock_failed" ? (
+            ) : resultState.type === "base_to_nock_lifecycle" ? (
               <ResultCard
                 isDarkMode={isDarkMode}
-                status={
-                  resultState.type === "base_to_nock_success" ? "success" : "failed"
-                }
+                status={resultCardStatus(resultState.record.status)}
                 flowDirection="base_to_nock"
                 errorMessage={
-                  resultState.type === "base_to_nock_failed"
-                    ? resultState.message
+                  resultState.record.status === "support" ||
+                  resultState.record.status === "failed"
+                    ? resultState.record.history.at(-1)?.detail
                     : undefined
                 }
+                lifecycleDetail={
+                  resultState.transientError ??
+                  resultState.record.history.at(-1)?.detail
+                }
+                lifecycleHistory={resultState.record.history}
+                networkFeePercent={PROTOCOL_FEE_DISPLAY}
+                networkFeeAmount="Verified in Base receipt"
+                nockchainNetworkFeeAmount="Estimated until settlement"
+                totalNock={`${
+                  resultState.record.actualPayoutNicks
+                    ? formatNicksAsNock(
+                        BigInt(resultState.record.actualPayoutNicks)
+                      )
+                    : resultState.record.estimatedPayoutNicks
+                    ? `~${formatNicksAsNock(
+                        BigInt(resultState.record.estimatedPayoutNicks)
+                      )}`
+                    : "Unknown"
+                } NOCK`}
+                totalUsd=""
+                receivingAddress={truncateAddress(resultState.record.destination)}
+                fullReceivingAddress={resultState.record.destination}
+                transactionId={truncateAddress(
+                  resultState.record.transactionHash,
+                  5
+                )}
+                fullTransactionId={resultState.record.transactionHash}
+                transactionUrl={
+                  transactionExplorerUrl(
+                    resultState.record.chainId,
+                    resultState.record.transactionHash
+                  ) ?? undefined
+                }
+                nockTransactionId={
+                  resultState.record.nockTransactionId ?? undefined
+                }
+                nockBlockId={resultState.record.nockBlockId ?? undefined}
+                onHomeClick={
+                  resultState.record.status === "confirmed" ||
+                  resultState.record.status === "failed"
+                    ? handleHomeClick
+                    : undefined
+                }
+              />
+            ) : resultState.type === "base_to_nock_failed" ? (
+              <ResultCard
+                isDarkMode={isDarkMode}
+                status="failed"
+                flowDirection="base_to_nock"
+                errorMessage={resultState.message}
                 networkFeePercent={PROTOCOL_FEE_DISPLAY}
                 networkFeeAmount={resultState.burnNetworkFeeDisplay}
                 nockchainNetworkFeeAmount={
@@ -278,26 +507,27 @@ export default function Home() {
                     ? resultState.nockchainNetworkFeeDisplay
                     : undefined
                 }
-                totalNock={`${calculateBaseToNockAmountAfterFees(resultState.amount, resultState.nockchainFeeNicks)} NOCK`}
+                totalNock={`${calculateBaseToNockAmountAfterFees(
+                  resultState.amount,
+                  resultState.nockchainFeeNicks
+                )} NOCK`}
                 totalUsd=""
-                receivingAddress={truncateAddress(resultState.destinationNockAddress)}
+                receivingAddress={truncateAddress(
+                  resultState.destinationNockAddress
+                )}
                 fullReceivingAddress={resultState.destinationNockAddress}
-                transactionId={
-                  resultState.type === "base_to_nock_success"
-                    ? truncateAddress(resultState.txHash, 5)
-                    : ""
-                }
-                fullTransactionId={
-                  resultState.type === "base_to_nock_success"
-                    ? resultState.txHash
-                    : ""
-                }
-                transactionUrl={
-                  resultState.type === "base_to_nock_success"
-                    ? (transactionExplorerUrl(resultState.chainId, resultState.txHash) ?? undefined)
-                    : undefined
-                }
+                transactionId=""
+                fullTransactionId=""
                 onHomeClick={handleHomeClick}
+              />
+            ) : resultState.type === "storage_support" ? (
+              <ResultCard
+                isDarkMode={isDarkMode}
+                status="support"
+                flowDirection="base_to_nock"
+                errorMessage={resultState.message}
+                lifecycleDetail="Preserve browser storage and contact support before retrying."
+                onHomeClick={undefined}
               />
             ) : resultState.type === "confirming" ? (
               <ResultCard

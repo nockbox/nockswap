@@ -48,6 +48,12 @@ export function categorizeConsoleMessage(
 ): ConsoleDiagnosticCategory | null {
   const normalized = message.toLowerCase();
   if (
+    normalized.startsWith("failed to load resource") ||
+    normalized.includes("blocked by cors policy")
+  ) {
+    return null;
+  }
+  if (
     normalized.includes("hydration") ||
     normalized.includes("server rendered html") ||
     normalized.includes("did not match")

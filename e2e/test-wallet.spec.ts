@@ -20,7 +20,10 @@ test("withdrawal controls and deterministic wallet survive rerenders", async ({
   }
 
   await swap.connectBaseWallet();
-  await swap.expectPrimaryAction("Base withdrawals unavailable", false);
+  const blocked = await swap.readForm();
+  if (!blocked.primaryActionDisabled || !blocked.primaryAction) {
+    throw new Error("authoritative readiness blocker was not visible");
+  }
   await swap.disconnectBaseWallet();
   await swap.connectBaseWallet();
 

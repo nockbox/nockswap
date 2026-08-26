@@ -13,7 +13,15 @@ import { useIsMobile } from "@/hooks/useMediaQuery";
 import { TransactionPreview, BridgeStatus, BridgeResult } from "@/hooks/useBridge";
 import { formatNicksAsNock } from "@/lib/nockAmount";
 
-type ResultStatus = "success" | "failed" | "confirming";
+type ResultStatus =
+  | "success"
+  | "failed"
+  | "confirming"
+  | "awaiting_base"
+  | "pending"
+  | "delayed"
+  | "support"
+  | "confirmed";
 type FlowDirection = "nock_to_base" | "base_to_nock";
 
 interface ResultCardProps {
@@ -32,6 +40,14 @@ interface ResultCardProps {
   transactionId?: string;
   fullTransactionId?: string;
   transactionUrl?: string;
+  nockTransactionId?: string;
+  nockBlockId?: string;
+  lifecycleDetail?: string;
+  lifecycleHistory?: Array<{
+    status: string;
+    detail: string;
+    observedAt: number;
+  }>;
   onHomeClick?: () => void;
   onConfirm?: () => Promise<void>;
   preview?: TransactionPreview;
@@ -59,6 +75,10 @@ export default function ResultCard({
   transactionId = "",
   fullTransactionId,
   transactionUrl,
+  nockTransactionId,
+  nockBlockId,
+  lifecycleDetail,
+  lifecycleHistory,
   onHomeClick,
   onConfirm,
   preview,
@@ -73,8 +93,36 @@ export default function ResultCard({
   const [downloadHover, setDownloadHover] = useState(false);
   const isMobile = useIsMobile();
 
-  const isSuccess = status === "success";
+  const isSuccess = status === "success" || status === "confirmed";
   const isConfirming = status === "confirming";
+  const isFailure = status === "failed" || status === "support";
+  const showStatusIcon = isSuccess || status === "failed";
+  const lifecycleState =
+    status === "awaiting_base"
+      ? "submitted"
+      : status === "pending"
+      ? "pending"
+      : status === "delayed"
+      ? "delayed"
+      : status === "confirmed"
+      ? "confirmed"
+      : status === "support" || status === "failed"
+      ? "support"
+      : null;
+  const statusTitle =
+    status === "confirming"
+      ? "Confirm Transaction"
+      : status === "awaiting_base"
+      ? "Awaiting Base receipt"
+      : status === "pending"
+      ? "Withdrawal pending"
+      : status === "delayed"
+      ? "Withdrawal delayed"
+      : status === "support"
+      ? "Support required"
+      : isSuccess
+      ? "Confirmed"
+      : "Failed";
   const theme = getCardTheme(isDarkMode);
   const confirmDisabled = Boolean(
     confirmDisabledReason ||
@@ -198,10 +246,10 @@ export default function ResultCard({
         }}
       >
         {/* Status icon - only show for success/failed, not confirming */}
-        {!isConfirming && (
+        {showStatusIcon && (
           <Image
             src={isSuccess ? ASSETS.txnSuccess : ASSETS.txnFail}
-            alt={isSuccess ? "Success" : "Failed"}
+            alt={isSuccess ? "Confirmed" : "Failed"}
             width={isMobile ? 52 : 64}
             height={isMobile ? 52 : 64}
             style={{
@@ -233,13 +281,9 @@ export default function ResultCard({
               textAlign: isConfirming ? "left" : isMobile ? "left" : "center",
             }}
           >
-            {isConfirming
-              ? "Confirm Transaction"
-              : isSuccess
-              ? "Success"
-              : "Failed"}
+            {statusTitle}
           </span>
-          {!isSuccess && !isConfirming && errorMessage && (
+          {isFailure && errorMessage && (
             <span
               data-testid="result-error"
               role="alert"
@@ -258,8 +302,47 @@ export default function ResultCard({
               {errorMessage}
             </span>
           )}
+          {lifecycleState ? (
+            <output
+              data-testid="withdrawal-lifecycle-state"
+              data-state={lifecycleState}
+              style={{
+                color: theme.textPrimary,
+                fontFamily: "var(--font-inter), sans-serif",
+                fontSize: 14,
+                lineHeight: "20px",
+                opacity: 0.7,
+                textAlign: "center",
+              }}
+            >
+              {lifecycleDetail ??
+                (lifecycleState === "confirmed"
+                  ? "Nockchain settlement is confirmed."
+                  : "Do not submit another burn while this withdrawal is active.")}
+            </output>
+          ) : null}
         </div>
       </div>
+      {lifecycleHistory && lifecycleHistory.length > 0 ? (
+        <ol
+          data-testid="withdrawal-history"
+          style={{
+            width: "100%",
+            margin: 0,
+            paddingLeft: 20,
+            color: theme.textPrimary,
+            fontFamily: "var(--font-inter), sans-serif",
+            fontSize: 12,
+            lineHeight: "18px",
+          }}
+        >
+          {lifecycleHistory.map((event, index) => (
+            <li key={`${event.observedAt}-${event.status}-${index}`}>
+              {event.status}: {event.detail}
+            </li>
+          ))}
+        </ol>
+      ) : null}
 
       {/* Content sections */}
       <div
@@ -906,6 +989,25 @@ export default function ResultCard({
             </div>
           </div>
         )}
+        {!isConfirming && nockTransactionId ? (
+          <div
+            data-testid="nockchain-reference"
+            title={nockTransactionId}
+            style={{
+              width: "100%",
+              padding: isMobile ? 12 : 16,
+              borderRadius: 8,
+              background: theme.inputBg,
+              boxSizing: "border-box",
+              color: theme.textPrimary,
+              fontFamily: "var(--font-inter), sans-serif",
+              overflowWrap: "anywhere",
+            }}
+          >
+            Nockchain transaction: {nockTransactionId}
+            {nockBlockId ? ` · block ${nockBlockId}` : ""}
+          </div>
+        ) : null}
 
         {/* Download Transaction button */}
         {((isConfirming && preview) || (isSuccess && result)) && (
@@ -1049,6 +1151,7 @@ export default function ResultCard({
         <button
           data-testid="result-home"
           onClick={onHomeClick}
+          disabled={!onHomeClick}
           style={{
             display: "flex",
             width: "100%",
@@ -1058,9 +1161,9 @@ export default function ResultCard({
             alignItems: "center",
             gap: 10,
             borderRadius: 8,
-            background: "#ffc413",
+            background: onHomeClick ? "#ffc413" : "#f6f5f1",
             border: "none",
-            cursor: "pointer",
+            cursor: onHomeClick ? "pointer" : "not-allowed",
             boxSizing: "border-box",
           }}
         >
@@ -1076,7 +1179,7 @@ export default function ResultCard({
               letterSpacing: 0.16,
             }}
           >
-            Back to home
+            {onHomeClick ? "Back to home" : "Keep tracking this withdrawal"}
           </span>
         </button>
       )}

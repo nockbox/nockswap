@@ -29,7 +29,7 @@ export function useBaseToNockNockchainFeeEstimate(
     grpcEndpoint,
     bridgeNetwork?.nockchainGrpcEndpoint
   );
-  const [display, setDisplay] = useState("—");
+  const [display, setDisplay] = useState("Estimate unavailable");
   const [feeNicks, setFeeNicks] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -59,7 +59,7 @@ export function useBaseToNockNockchainFeeEstimate(
       !txEngineActivationHeights ||
       !grpcUrl
     ) {
-      setDisplay("—");
+      setDisplay("Estimate unavailable");
       setFeeNicks(null);
       return;
     }
@@ -81,12 +81,16 @@ export function useBaseToNockNockchainFeeEstimate(
           txEngineSettings,
         });
         if (!cancelled) {
-          setDisplay(`${formatNicksAsNock(fee)} NOCK`);
+          setDisplay(
+            `Estimated ~${formatNicksAsNock(
+              fee
+            )} NOCK; liquidity and reservations can change`
+          );
           setFeeNicks(fee);
         }
       } catch {
         if (!cancelled) {
-          setDisplay("—");
+          setDisplay("Estimate unavailable");
           setFeeNicks(null);
         }
       } finally {

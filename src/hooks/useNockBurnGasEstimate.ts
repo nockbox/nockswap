@@ -23,11 +23,10 @@ function formatEthApprox(wei: bigint): string {
   const visibleFraction = fraction.slice(0, whole === "0" ? 6 : 4).replace(/0+$/, "");
   return `~${visibleFraction ? `${whole}.${visibleFraction}` : whole} ETH`;
 }
-
 /**
- * Rough max fee for a `Nock.burn` on the connected chain: `estimateGas` ×
- * `maxFeePerGas` (EIP-1559) or `gasPrice`. Does not add OP Stack L1 data fee,
- * so on Base the true cost can be slightly higher.
+ * Estimates the exact 116-byte transaction's execution gas. Base's OP Stack L1
+ * data fee is disclosed separately because the generic wallet RPC does not
+ * expose a portable L1-fee estimator.
  */
 export function useNockBurnGasEstimate(
   amount: ExactNockAmount | null,
@@ -129,7 +128,7 @@ export function useNockBurnGasEstimate(
     if (gasLimit === undefined || gasLimit === 0n) return "—";
     const maxFee = fees?.maxFeePerGas ?? fees?.gasPrice;
     if (maxFee === undefined || maxFee === 0n) return "—";
-    return formatEthApprox(gasLimit * maxFee);
+    return `${formatEthApprox(gasLimit * maxFee)} + OP L1 data fee`;
   }, [
     estimateEnabled,
     expectedNetwork,

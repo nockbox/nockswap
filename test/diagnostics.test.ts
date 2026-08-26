@@ -29,4 +29,12 @@ test("ordinary informational console messages are ignored", () => {
     categorizeConsoleMessage("info", "Download the React DevTools"),
     null
   );
+  assert.equal(
+    categorizeConsoleMessage("error", "Failed to load resource: net::ERR_CONNECTION_REFUSED"),
+    null
+  );
+  assert.equal(
+    categorizeConsoleMessage("error", "Request has been blocked by CORS policy"),
+    null
+  );
 });

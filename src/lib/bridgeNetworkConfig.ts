@@ -13,6 +13,10 @@ export interface BridgeNetworkConfig {
   bridgeLockRoot: string;
   nockchainConfirmationDepth: number;
   nockchainGrpcEndpoint?: string;
+  publicStatusUrl: string;
+  withdrawalWireProtocol: string;
+  withdrawalPolicyId: string;
+  irisSdkVersion: string;
 }
 
 interface BridgeNetworkEnv {
@@ -24,6 +28,10 @@ interface BridgeNetworkEnv {
   bridgeLockRoot?: string;
   nockchainConfirmationDepth?: string;
   nockchainGrpcEndpoint?: string;
+  publicStatusUrl?: string;
+  withdrawalWireProtocol?: string;
+  withdrawalPolicyId?: string;
+  irisSdkVersion?: string;
 }
 
 function nonEmpty(value: string | undefined): string | undefined {
@@ -66,6 +74,10 @@ function buildBridgeNetworkConfig(
   const bridgeSignerPkhs = parseList(env.bridgeSignerPkhs);
   const bridgeThreshold = parsePositiveInteger(env.bridgeThreshold);
   const bridgeLockRoot = nonEmpty(env.bridgeLockRoot);
+  const publicStatusUrl = nonEmpty(env.publicStatusUrl);
+  const withdrawalWireProtocol = nonEmpty(env.withdrawalWireProtocol);
+  const withdrawalPolicyId = nonEmpty(env.withdrawalPolicyId);
+  const irisSdkVersion = nonEmpty(env.irisSdkVersion);
   const nockchainConfirmationDepth =
     parseNonNegativeInteger(env.nockchainConfirmationDepth) ??
     defaults?.nockchainConfirmationDepth ??
@@ -77,7 +89,11 @@ function buildBridgeNetworkConfig(
     !messageInboxAddress ||
     bridgeSignerPkhs.length === 0 ||
     !bridgeThreshold ||
-    !bridgeLockRoot
+    !bridgeLockRoot ||
+    !publicStatusUrl ||
+    !withdrawalWireProtocol ||
+    !withdrawalPolicyId ||
+    !irisSdkVersion
   ) {
     return undefined;
   }
@@ -93,6 +109,10 @@ function buildBridgeNetworkConfig(
     bridgeLockRoot,
     nockchainConfirmationDepth,
     nockchainGrpcEndpoint: nonEmpty(env.nockchainGrpcEndpoint),
+    publicStatusUrl,
+    withdrawalWireProtocol,
+    withdrawalPolicyId,
+    irisSdkVersion,
   };
 }
 
@@ -114,6 +134,14 @@ export function getBridgeNetworkConfigs(): BridgeNetworkConfig[] {
         process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCKCHAIN_CONFIRMATION_DEPTH,
       nockchainGrpcEndpoint:
         process.env.NEXT_PUBLIC_BRIDGE_MAINNET_NOCKCHAIN_GRPC_URL,
+      publicStatusUrl:
+        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_PUBLIC_STATUS_URL,
+      withdrawalWireProtocol:
+        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_WITHDRAWAL_WIRE_PROTOCOL,
+      withdrawalPolicyId:
+        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_WITHDRAWAL_POLICY_ID,
+      irisSdkVersion:
+        process.env.NEXT_PUBLIC_BRIDGE_MAINNET_IRIS_SDK_VERSION,
     }, { nockchainConfirmationDepth: 100 }),
     buildBridgeNetworkConfig("bridge-dev", "Bridge dev", {
       chainId: process.env.NEXT_PUBLIC_BRIDGE_DEV_CHAIN_ID,
@@ -127,6 +155,14 @@ export function getBridgeNetworkConfigs(): BridgeNetworkConfig[] {
         process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCKCHAIN_CONFIRMATION_DEPTH,
       nockchainGrpcEndpoint:
         process.env.NEXT_PUBLIC_BRIDGE_DEV_NOCKCHAIN_GRPC_URL,
+      publicStatusUrl:
+        process.env.NEXT_PUBLIC_BRIDGE_DEV_PUBLIC_STATUS_URL,
+      withdrawalWireProtocol:
+        process.env.NEXT_PUBLIC_BRIDGE_DEV_WITHDRAWAL_WIRE_PROTOCOL,
+      withdrawalPolicyId:
+        process.env.NEXT_PUBLIC_BRIDGE_DEV_WITHDRAWAL_POLICY_ID,
+      irisSdkVersion:
+        process.env.NEXT_PUBLIC_BRIDGE_DEV_IRIS_SDK_VERSION,
     }),
   ].filter((config): config is BridgeNetworkConfig => Boolean(config));
 }
