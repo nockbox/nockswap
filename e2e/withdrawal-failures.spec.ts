@@ -89,7 +89,7 @@ let snapshotId = "";
 let baselineBurnCount = 0;
 let logStartBlock = "";
 
-test.describe.configure({ mode: "serial" });
+test.describe.configure({ mode: "default" });
 
 test.beforeAll(async () => {
   statusServer = http.createServer(handleStatusRequest);
@@ -131,7 +131,7 @@ const scenarios: MatrixScenario[] = [
       await expect(page.getByTestId("result-error")).toContainText(
         "Transaction cancelled"
       );
-      return zero();
+      return oneSendNoBurn();
     },
   },
   {
@@ -205,7 +205,7 @@ const scenarios: MatrixScenario[] = [
       }));
       await swap.confirm();
       await expect(page.getByTestId("result-error")).toBeVisible();
-      return zero();
+      return oneSendNoBurn();
     },
   },
   {
@@ -221,7 +221,7 @@ const scenarios: MatrixScenario[] = [
       await expect(page.getByTestId("result-error")).toContainText(
         /reverted/i
       );
-      return zero();
+      return oneSendNoBurn();
     },
   },
   {
@@ -235,7 +235,7 @@ const scenarios: MatrixScenario[] = [
       expect(record.submittedTransactionHash).toBe(replacement.submittedHash);
       expect(record.transactionHash).toBe(replacement.replacementHash);
       expect(record.transactionHash).not.toBe(record.submittedTransactionHash);
-      return oneBurnAtMostOneSend();
+      return one();
     },
   },
   {
@@ -251,7 +251,7 @@ const scenarios: MatrixScenario[] = [
       await expect(page.getByTestId("result-error")).toContainText(
         /observed 0/i
       );
-      return zero();
+      return oneSendNoBurn();
     },
   },
   {
@@ -267,7 +267,7 @@ const scenarios: MatrixScenario[] = [
       await expect(page.getByTestId("result-error")).toContainText(
         /observed 0/i
       );
-      return zero();
+      return oneSendNoBurn();
     },
   },
   {
@@ -1131,13 +1131,13 @@ function zero(): ScenarioExpectation {
 function one(): ScenarioExpectation {
   return { burns: "one", sends: "one" };
 }
-function oneBurnAtMostOneSend(): ScenarioExpectation {
-  return { burns: "one", sends: "at_most_one" };
+function oneSendNoBurn(): ScenarioExpectation {
+  return { burns: "zero", sends: "one" };
 }
 
 
 function atMostOne(): ScenarioExpectation {
-  return { burns: "at_most_one", sends: "at_most_one" };
+  return { burns: "at_most_one", sends: "one" };
 }
 
 function loadManifest(): FailureManifest {
