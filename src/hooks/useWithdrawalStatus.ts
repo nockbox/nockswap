@@ -100,7 +100,13 @@ export function useWithdrawalStatus(
   useEffect(() => setRecord(initialRecord), [initialRecord]);
 
   useEffect(() => {
-    if (!record || !network || !record.baseEventId || record.status === "confirmed") {
+    if (
+      !record ||
+      !network ||
+      !record.baseEventId ||
+      record.status === "confirmed" ||
+      record.status === "failed"
+    ) {
       setLoading(false);
       return;
     }
@@ -109,6 +115,7 @@ export function useWithdrawalStatus(
     let failures = 0;
     const poll = async () => {
       if (!active) return;
+      let shouldContinue = true;
       if (document.visibilityState === "hidden") {
         timer = window.setTimeout(poll, 5_000);
         return;
@@ -128,7 +135,10 @@ export function useWithdrawalStatus(
           setTransientError(null);
           setRecord(next);
           onUpdate(next);
-          if (next.status === "confirmed" || next.status === "failed") return;
+          if (next.status === "confirmed" || next.status === "failed") {
+            shouldContinue = false;
+            return;
+          }
         }
       } catch (error) {
         if (active) {
@@ -140,8 +150,10 @@ export function useWithdrawalStatus(
       } finally {
         if (active) {
           setLoading(false);
-          const delay = Math.min(30_000, 2_000 * 2 ** Math.min(failures, 4));
-          timer = window.setTimeout(poll, delay);
+          if (shouldContinue) {
+            const delay = Math.min(30_000, 2_000 * 2 ** Math.min(failures, 4));
+            timer = window.setTimeout(poll, delay);
+          }
         }
       }
     };

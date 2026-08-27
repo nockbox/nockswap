@@ -357,6 +357,9 @@ const scenarios: MatrixScenario[] = [
       await swap.connectBaseWallet();
       await swap.expectLifecycleState("support");
       await expect(page.getByTestId("result-error")).toContainText(/invalidated/i);
+      const requestsAtFailure = statusControl.statusRequests;
+      await page.waitForTimeout(2_500);
+      expect(statusControl.statusRequests).toBe(requestsAtFailure);
       return zero();
     },
   },
