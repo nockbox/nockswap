@@ -138,10 +138,14 @@ export class SwapPage {
     };
   }
 
-  async expectPrimaryAction(name: string | RegExp, enabled: boolean) {
-    await expect(this.primaryAction).toHaveText(name);
-    if (enabled) await expect(this.primaryAction).toBeEnabled();
-    else await expect(this.primaryAction).toBeDisabled();
+  async expectPrimaryAction(
+    name: string | RegExp,
+    enabled: boolean,
+    timeout?: number
+  ) {
+    await expect(this.primaryAction).toHaveText(name, { timeout });
+    if (enabled) await expect(this.primaryAction).toBeEnabled({ timeout });
+    else await expect(this.primaryAction).toBeDisabled({ timeout });
   }
 
   async readLifecycleState(): Promise<WithdrawalUiState> {

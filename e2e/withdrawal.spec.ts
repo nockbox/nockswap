@@ -39,14 +39,14 @@ test("real withdrawal reaches orchestrator terminal proof exactly once", async (
   diagnostics,
 }) => {
   const orchestrator = loadE2eOrchestratorConfig();
+  const rpcOrigin = new URL(orchestrator.rpcUrl).origin;
   const manifest = parseBrowserManifest(
     fs.readFileSync(orchestrator.manifestPath, "utf8")
   );
   verifyVendoredIris(manifest);
-  let baseEventId = "";
   let burnRequests = 0;
   page.on("request", (request) => {
-    if (request.url() !== orchestrator.rpcUrl || request.method() !== "POST") return;
+    if (new URL(request.url()).origin !== rpcOrigin || request.method() !== "POST") return;
     try {
       const payload = request.postDataJSON() as { method?: string };
       if (payload.method === "eth_sendTransaction") burnRequests += 1;
@@ -55,47 +55,6 @@ test("real withdrawal reaches orchestrator terminal proof exactly once", async (
     }
   });
 
-  await page.route(`${manifest.public_status_url}**`, async (route) => {
-    const url = new URL(route.request().url());
-    if (!url.searchParams.has("base_event_id")) {
-      await route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify({
-          schemaVersion: 1,
-          observedAt: Date.now(),
-          ready: true,
-          chainId: orchestrator.chainId,
-          nockTokenAddress: manifest.contracts.nock,
-          messageInboxAddress: manifest.contracts.message_inbox,
-          bridgeSignerPkhs: manifest.bridge_signer_pkhs,
-          bridgeThreshold: manifest.bridge_threshold,
-          withdrawalsEnabled: true,
-          withdrawalWireProtocol: "WithdrawalWireV1",
-          withdrawalPolicyId: "withdrawal-policy-v1",
-          irisSdkVersion: manifest.iris_package_version,
-          reason: null,
-        }),
-      });
-      return;
-    }
-    baseEventId = url.searchParams.get("base_event_id") ?? baseEventId;
-    const terminal = readTerminalProof(manifest.terminal_proof_path, manifest.run_id);
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        schemaVersion: 1,
-        withdrawalId: manifest.run_id,
-        baseEventId,
-        status: terminal ? "terminal" : "submitted",
-        terminalProof: Boolean(terminal),
-        nockTransactionId: terminal?.nock_transaction_id ?? null,
-        nockBlockId: terminal?.nock_block_id ?? null,
-        actualPayoutNicks: terminal?.payout_nicks ?? null,
-        observedAt: Date.now(),
-        reason: null,
-      }),
-    });
-  });
 
   const swap = new SwapPage(page, testWallet);
   await swap.goto();
@@ -103,7 +62,11 @@ test("real withdrawal reaches orchestrator terminal proof exactly once", async (
   await swap.connectBaseWallet();
   await swap.enterExactAmount(manifest.amount_nocks);
   await swap.enterDestination(manifest.destination_v1_pkh);
-  await swap.expectPrimaryAction("Review withdrawal", true);
+  await swap.expectPrimaryAction(
+    "Review withdrawal",
+    true,
+    orchestrator.timeoutMs
+  );
   const form = await swap.readForm();
   if (
     form.amount.replaceAll(",", "") !== manifest.amount_nocks ||
