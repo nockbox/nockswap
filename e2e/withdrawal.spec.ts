@@ -100,6 +100,15 @@ test("real withdrawal reaches orchestrator terminal proof exactly once", async (
   ) {
     throw new Error(`Browser evidence is not canonical: ${JSON.stringify(observed)}`);
   }
+  await expect
+    .poll(
+      () => readTerminalProof(manifest.terminal_proof_path, manifest.run_id),
+      {
+        message: "waiting for the orchestrator's direct terminal proof",
+        timeout: orchestrator.timeoutMs,
+      }
+    )
+    .not.toBeNull();
   const proofBytes = fs.readFileSync(manifest.terminal_proof_path);
   const proof = readTerminalProof(manifest.terminal_proof_path, manifest.run_id);
   if (!proof) throw new Error("Terminal proof disappeared before result write");
