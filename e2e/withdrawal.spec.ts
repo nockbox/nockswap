@@ -6,7 +6,7 @@ import { loadE2eOrchestratorConfig } from "./fixtures/test-wallet";
 import { SwapPage } from "./pages/swap-page";
 
 interface BrowserManifest {
-  schema_version: 1;
+  schema_version: 2;
   run_id: string;
   amount_nocks: string;
   destination_v1_pkh: string;
@@ -16,6 +16,7 @@ interface BrowserManifest {
   bridge_signer_pkhs: string[];
   bridge_threshold: number;
   bridge_lock_root: string;
+  nockswap_git_revision: string;
   iris_git_revision: string;
   iris_package_version: string;
   iris_tarball_sha256: string;
@@ -113,8 +114,9 @@ test("real withdrawal reaches orchestrator terminal proof exactly once", async (
   const proof = readTerminalProof(manifest.terminal_proof_path, manifest.run_id);
   if (!proof) throw new Error("Terminal proof disappeared before result write");
   const result = {
-    schema_version: 1,
+    schema_version: 2,
     run_id: manifest.run_id,
+    nockswap_git_revision: manifest.nockswap_git_revision,
     status: "confirmed",
     account: testWallet.account,
     chain_id: orchestrator.chainId,
@@ -153,7 +155,7 @@ function parseBrowserManifest(text: string): BrowserManifest {
   }
   const manifest = value as Partial<BrowserManifest>;
   if (
-    manifest.schema_version !== 1 ||
+    manifest.schema_version !== 2 ||
     typeof manifest.run_id !== "string" ||
     typeof manifest.amount_nocks !== "string" ||
     typeof manifest.destination_v1_pkh !== "string" ||
@@ -162,6 +164,7 @@ function parseBrowserManifest(text: string): BrowserManifest {
     !manifest.bridge_signer_pkhs.every((value) => typeof value === "string") ||
     typeof manifest.bridge_threshold !== "number" ||
     typeof manifest.bridge_lock_root !== "string" ||
+    typeof manifest.nockswap_git_revision !== "string" ||
     typeof manifest.iris_git_revision !== "string" ||
     typeof manifest.iris_package_version !== "string" ||
     typeof manifest.iris_tarball_sha256 !== "string" ||

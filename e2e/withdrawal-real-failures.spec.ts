@@ -14,10 +14,11 @@ const SECOND_ANVIL_ACCOUNT = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 type JsonObject = Record<string, unknown>;
 
 interface RealFailureManifest {
-  schema_version: 1;
+  schema_version: 2;
   rpc_url: string;
   account: string;
   contracts: Record<string, string>;
+  nockswap_git_revision: string;
   amount_nocks: string;
   destination_v1_pkh: string;
   public_status_url: string;
@@ -467,9 +468,10 @@ function loadManifest(): RealFailureManifest {
   }
   const candidate = value as Partial<RealFailureManifest>;
   if (
-    candidate.schema_version !== 1 ||
+    candidate.schema_version !== 2 ||
     typeof candidate.rpc_url !== "string" ||
     typeof candidate.account !== "string" ||
+    typeof candidate.nockswap_git_revision !== "string" ||
     typeof candidate.amount_nocks !== "string" ||
     typeof candidate.destination_v1_pkh !== "string" ||
     typeof candidate.public_status_url !== "string" ||

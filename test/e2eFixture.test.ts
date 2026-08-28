@@ -15,6 +15,7 @@ import {
 const TEST_KEY = `0x${"11".repeat(32)}` as Hex;
 const ACCOUNT = privateKeyToAccount(TEST_KEY).address;
 const CONTRACT = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const NOCKSWAP_REVISION = "a".repeat(40);
 
 function preservedDirectory(label: string) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `nockswap-${label}-`));
@@ -27,11 +28,12 @@ test("orchestrator manifest and nonsecret environment agree exactly", () => {
   fs.writeFileSync(
     manifestPath,
     JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       base_url: "http://127.0.0.1:3000",
       rpc_url: "http://127.0.0.1:8545",
       chain_id: 31338,
       account: ACCOUNT,
+      nockswap_git_revision: NOCKSWAP_REVISION,
       contracts: [CONTRACT],
     })
   );
@@ -75,11 +77,12 @@ test("manifest cannot carry the private key", () => {
   fs.writeFileSync(
     manifestPath,
     JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       base_url: "http://127.0.0.1:3000",
       rpc_url: "http://127.0.0.1:8545",
       chain_id: 31338,
       account: ACCOUNT,
+      nockswap_git_revision: NOCKSWAP_REVISION,
       contracts: [CONTRACT],
       private_key: TEST_KEY,
     })

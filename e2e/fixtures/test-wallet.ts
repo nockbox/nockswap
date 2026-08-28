@@ -13,11 +13,12 @@ import {
 } from "../../src/lib/e2eWallet";
 
 interface ManifestDocument {
-  schema_version: number;
+  schema_version: 2;
   base_url: string;
   rpc_url: string;
   chain_id: number;
   account: string;
+  nockswap_git_revision: string;
   contracts: string[];
 }
 
@@ -214,11 +215,12 @@ function parseManifest(text: string): ManifestDocument {
     ? Object.values(candidate.contracts)
     : [];
   if (
-    candidate.schema_version !== 1 ||
+    candidate.schema_version !== 2 ||
     typeof candidate.base_url !== "string" ||
     typeof candidate.rpc_url !== "string" ||
     typeof candidate.chain_id !== "number" ||
     typeof candidate.account !== "string" ||
+    typeof candidate.nockswap_git_revision !== "string" ||
     contracts.length === 0 ||
     !contracts.every((contract) => typeof contract === "string")
   ) {

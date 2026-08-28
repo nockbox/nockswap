@@ -22,7 +22,7 @@ type JsonRpcId = number | string | null;
 type JsonObject = Record<string, unknown>;
 
 interface FailureManifest {
-  schema_version: 1;
+  schema_version: 2;
   run_id: string;
   base_url: string;
   rpc_url: string;
@@ -31,6 +31,7 @@ interface FailureManifest {
   contracts: Record<string, string>;
   bridge_signer_pkhs: string[];
   bridge_threshold: number;
+  nockswap_git_revision: string;
   iris_package_version: string;
   amount_nocks: string;
   destination_v1_pkh: string;
@@ -1271,7 +1272,7 @@ function loadManifest(): FailureManifest {
   }
   const candidate = value as Partial<FailureManifest>;
   if (
-    candidate.schema_version !== 1 ||
+    candidate.schema_version !== 2 ||
     candidate.chain_id !== 31338 ||
     typeof candidate.run_id !== "string" ||
     typeof candidate.base_url !== "string" ||
@@ -1280,6 +1281,7 @@ function loadManifest(): FailureManifest {
     typeof candidate.public_status_url !== "string" ||
     typeof candidate.amount_nocks !== "string" ||
     typeof candidate.destination_v1_pkh !== "string" ||
+    typeof candidate.nockswap_git_revision !== "string" ||
     typeof candidate.iris_package_version !== "string" ||
     typeof candidate.contracts !== "object" ||
     candidate.contracts === null ||

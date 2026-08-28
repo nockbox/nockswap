@@ -4,11 +4,12 @@ import { test } from "./fixtures/diagnostics";
 import { SwapPage } from "./pages/swap-page";
 
 interface LifecycleManifest {
-  schema_version: 1;
+  schema_version: 2;
   chain_id: 31338;
   contracts: Record<string, string>;
   bridge_signer_pkhs: string[];
   bridge_threshold: number;
+  nockswap_git_revision: string;
   public_status_url: string;
 }
 
@@ -213,11 +214,12 @@ function loadManifest(): LifecycleManifest {
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
-    (value as Partial<LifecycleManifest>).schema_version !== 1 ||
+    (value as Partial<LifecycleManifest>).schema_version !== 2 ||
     (value as Partial<LifecycleManifest>).chain_id !== 31338 ||
     typeof (value as Partial<LifecycleManifest>).public_status_url !== "string" ||
     !Array.isArray((value as Partial<LifecycleManifest>).bridge_signer_pkhs) ||
     !Number.isSafeInteger((value as Partial<LifecycleManifest>).bridge_threshold) ||
+    typeof (value as Partial<LifecycleManifest>).nockswap_git_revision !== "string" ||
     typeof (value as Partial<LifecycleManifest>).contracts !== "object" ||
     (value as Partial<LifecycleManifest>).contracts === null
   ) {
