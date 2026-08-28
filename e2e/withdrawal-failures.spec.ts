@@ -24,6 +24,7 @@ type JsonObject = Record<string, unknown>;
 interface FailureManifest {
   schema_version: 1;
   run_id: string;
+  base_url: string;
   rpc_url: string;
   chain_id: 31338;
   account: string;
@@ -37,7 +38,7 @@ interface FailureManifest {
 }
 
 interface PublicStatus {
-  schemaVersion: 1;
+  schemaVersion: 2;
   withdrawalId: string;
   baseEventId: string;
   status:
@@ -48,10 +49,17 @@ interface PublicStatus {
     | "terminal"
     | "reorg_hold"
     | "failed";
+  resolution: string;
+  revision: string;
+  recoveryGeneration: number;
   terminalProof: boolean;
   nockTransactionId: string | null;
   nockBlockId: string | null;
   actualPayoutNicks: string | null;
+  invalidatedBlockNumber: string | null;
+  invalidatedBlockHash: string | null;
+  priorStatus: string | null;
+  recoveryReason: string | null;
   observedAt: number;
   reason: string | null;
 }
@@ -135,14 +143,24 @@ const scenarios: MatrixScenario[] = [
     },
   },
   {
+    name: "contract-wallet burner is rejected before submission",
+    async run({ page, testWallet }) {
+      await rpc("anvil_setCode", [manifest.account, "0x60006000"]);
+      const swap = await prepareReview(page, testWallet);
+      await swap.confirm();
+      await expect(page.getByTestId("result-error")).toContainText(
+        /contract-wallet|delegated-account/i
+      );
+      return zero();
+    },
+  },
+  {
     name: "wallet disconnect after review blocks submission",
     async run({ page, testWallet }) {
       const swap = await prepareReview(page, testWallet);
       await testWallet.disconnect();
-      await swap.confirm();
-      await expect(page.getByTestId("result-error")).toContainText(
-        /account|deployment is unavailable/i
-      );
+      await expect(swap.confirmAction).toHaveCount(0);
+      await expect(swap.primaryAction).toBeVisible();
       return zero();
     },
   },
@@ -299,6 +317,26 @@ const scenarios: MatrixScenario[] = [
     },
   },
   {
+    name: "unwritable history storage blocks burn before wallet submission",
+    async run({ page, testWallet }) {
+      await page.addInitScript(() => {
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key: string, value: string): void {
+          if (key === "nockswap.withdrawals.v1") {
+            throw new DOMException("Injected storage denial", "QuotaExceededError");
+          }
+          setItem.call(this, key, value);
+        };
+      });
+      const swap = await prepareReview(page, testWallet);
+      await swap.confirm();
+      await expect(page.getByTestId("result-error")).toContainText(
+        /storage is unavailable|storage denial/i
+      );
+      return zero();
+    },
+  },
+  {
     name: "duplicate confirm clicks submit at most one burn",
     async run({ page, testWallet }) {
       const swap = await prepareReview(page, testWallet);
@@ -358,8 +396,9 @@ const scenarios: MatrixScenario[] = [
       await swap.expectLifecycleState("support");
       await expect(page.getByTestId("result-error")).toContainText(/invalidated/i);
       const requestsAtFailure = statusControl.statusRequests;
-      await page.waitForTimeout(2_500);
-      expect(statusControl.statusRequests).toBe(requestsAtFailure);
+      await expect
+        .poll(() => statusControl.statusRequests)
+        .toBeGreaterThan(requestsAtFailure);
       return zero();
     },
   },
@@ -370,6 +409,13 @@ const scenarios: MatrixScenario[] = [
       statusControl.status = {
         ...submittedStatus(EVENT),
         status: "reorg_hold",
+        resolution: "reorged",
+        revision: "2",
+        recoveryGeneration: 1,
+        invalidatedBlockNumber: "100",
+        invalidatedBlockHash: BLOCK,
+        priorStatus: "terminal",
+        recoveryReason: "Withdrawal held after a Base reorganization.",
         reason: "Withdrawal held after a Base reorganization.",
       };
       const swap = new SwapPage(page, testWallet);
@@ -391,9 +437,9 @@ const scenarios: MatrixScenario[] = [
       await swap.goto();
       await swap.connectBaseWallet();
       await swap.expectLifecycleState("pending");
-      await expect(page.getByTestId("withdrawal-lifecycle-state")).toContainText(
-        /identity does not match/i
-      );
+      const record = await activeStoredRecord(page);
+      expect(record.baseEventId).toBe(EVENT);
+      expect(record.nockTransactionId).toBeNull();
       await expect(page.getByTestId("result-transaction")).toBeVisible();
       return zero();
     },
@@ -415,7 +461,7 @@ const scenarios: MatrixScenario[] = [
       await swap.connectBaseWallet();
       await swap.expectLifecycleState("pending");
       await expect(page.getByTestId("withdrawal-lifecycle-state")).toContainText(
-        /missing multi-source settlement proof/i
+        /missing settlement proof/i
       );
       return zero();
     },
@@ -551,7 +597,7 @@ function readinessScenarios(): MatrixScenario[] {
     readinessScenario(
       "stale readiness blocks submission",
       "stale",
-      /readiness is stale/i
+      /Base observation is stale|readiness is stale/i
     ),
     readinessScenario(
       "policy mismatch blocks submission",
@@ -951,14 +997,21 @@ async function storedWithdrawalStatus(page: Page): Promise<string | null> {
 
 function submittedStatus(baseEventId: string): PublicStatus {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     withdrawalId: "failure-matrix-withdrawal",
     baseEventId,
     status: "submitted",
+    resolution: "found",
+    revision: "1",
+    recoveryGeneration: 0,
     terminalProof: false,
     nockTransactionId: null,
     nockBlockId: null,
     actualPayoutNicks: null,
+    invalidatedBlockNumber: null,
+    invalidatedBlockHash: null,
+    priorStatus: null,
+    recoveryReason: null,
     observedAt: Date.now(),
     reason: null,
   };
@@ -997,10 +1050,66 @@ function handleStatusRequest(
   request: http.IncomingMessage,
   response: http.ServerResponse
 ): void {
-  response.setHeader("access-control-allow-origin", "*");
+  response.setHeader(
+    "access-control-allow-origin",
+    new URL(manifest.base_url).origin
+  );
+  response.setHeader("access-control-allow-methods", "GET, OPTIONS");
   response.setHeader("cache-control", "no-store");
   response.setHeader("content-type", "application/json");
   const url = new URL(request.url ?? "/", manifest.public_status_url);
+  if (url.searchParams.has("quote")) {
+    const grossRaw = url.searchParams.get("gross_amount_nicks") ?? "";
+    let gross: bigint;
+    try {
+      gross = BigInt(grossRaw);
+    } catch {
+      response.statusCode = 400;
+      response.end(JSON.stringify({ error: "invalid gross amount" }));
+      return;
+    }
+    const bridgeFee = ((gross + 65_535n) / 65_536n) * 195n;
+    const transactionFee = 256n;
+    const net = gross - bridgeFee - transactionFee;
+    response.statusCode = 200;
+    response.end(
+      JSON.stringify({
+        schemaVersion: 1,
+        available: net > 0n,
+        grossAmountNicks: gross.toString(),
+        bridgeFeeNicks: bridgeFee.toString(),
+        transactionFeeNicks: transactionFee.toString(),
+        netPayoutNicks: net > 0n ? net.toString() : "0",
+        snapshotHeight: 700,
+        snapshotBlockId: "mock-block-700",
+        observedAt: Date.now(),
+        revision: "1",
+        reason: net > 0n ? null : "Non-positive payout.",
+      })
+    );
+    return;
+  }
+  if (url.searchParams.has("history")) {
+    statusControl.statusRequests += 1;
+    if (statusControl.statusFailuresRemaining > 0) {
+      statusControl.statusFailuresRemaining -= 1;
+      response.statusCode = 503;
+      response.end(JSON.stringify({ error: "injected status outage" }));
+      return;
+    }
+    if (statusControl.status?.terminalProof) {
+      statusControl.terminalProofResponses += 1;
+    }
+    response.statusCode = 200;
+    response.end(
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: statusControl.status?.revision ?? "0",
+        records: statusControl.status ? [statusControl.status] : [],
+      })
+    );
+    return;
+  }
   if (url.searchParams.has("base_event_id")) {
     statusControl.statusRequests += 1;
     if (statusControl.statusFailuresRemaining > 0) {
@@ -1028,12 +1137,10 @@ function handleStatusRequest(
     response.end(JSON.stringify({ error: "injected readiness outage" }));
     return;
   }
+  const observedAt = Date.now();
   const readiness = {
     schemaVersion: 1,
-    observedAt:
-      statusControl.readinessMode === "stale"
-        ? Date.now() - 61_000
-        : Date.now(),
+    observedAt,
     ready: true,
     chainId: manifest.chain_id,
     nockTokenAddress: getAddress(manifest.contracts.nock),
@@ -1048,6 +1155,18 @@ function handleStatusRequest(
     withdrawalPolicyId: "withdrawal-policy-v1",
     irisSdkVersion: manifest.iris_package_version,
     reason: null,
+    baseObservedAt:
+      statusControl.readinessMode === "stale" ? observedAt - 61_000 : observedAt,
+    operatorAdmissionEnabled: true,
+    contractGateEnabled: true,
+    minimumGrossNocks: "100000",
+    minimumGrossNicks: "6553600000",
+    minimumGrossBaseUnits: "1000000000000000000000",
+    baseUnitsPerNock: "10000000000000000",
+    nicksPerNock: "65536",
+    baseUnitsPerNick: "152587890625",
+    bridgeFeeNicksPerStartedNock: "195",
+    maximumNicks: "18446744073709551615",
   };
   response.statusCode = 200;
   response.end(JSON.stringify(readiness));
@@ -1155,6 +1274,7 @@ function loadManifest(): FailureManifest {
     candidate.schema_version !== 1 ||
     candidate.chain_id !== 31338 ||
     typeof candidate.run_id !== "string" ||
+    typeof candidate.base_url !== "string" ||
     typeof candidate.rpc_url !== "string" ||
     typeof candidate.account !== "string" ||
     typeof candidate.public_status_url !== "string" ||

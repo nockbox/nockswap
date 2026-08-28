@@ -1,9 +1,9 @@
 "use client";
 
+import { getAccount, getPublicClient } from "@wagmi/core";
 import {
   useAccount,
   useChainId,
-  usePublicClient,
   useSendTransaction,
   useSwitchChain,
 } from "wagmi";
@@ -27,6 +27,11 @@ import {
   getBridgeNetworkConfig,
   getPreferredBridgeNetworkConfig,
 } from "@/lib/bridgeNetworkConfig";
+import { wagmiConfig } from "@/lib/wagmiConfig";
+import {
+  assertWithdrawalBurnerCodeSupported,
+  selectWithdrawalBurnClient,
+} from "@/lib/withdrawalBurnSafety";
 import type { ExactNockAmount } from "@/lib/nockAmount";
 
 const burnForWithdrawalAbi = [
@@ -74,13 +79,13 @@ export function useNockBurn() {
   const { sendTransactionAsync, isPending } = useSendTransaction();
   const { switchChainAsync } = useSwitchChain();
   const chainId = useChainId();
-  const publicClient = usePublicClient();
 
   const burnNock = async (
     exactAmount: ExactNockAmount,
     destinationNockAddress: string,
     expectedChainId?: number,
-    onSubmitted?: (submission: NockBurnPreparedSubmission) => void | Promise<void>
+    onSubmitted?: (submission: NockBurnPreparedSubmission) => void | Promise<void>,
+    onReplaced?: (transactionHash: Hex) => void | Promise<void>
   ): Promise<NockBurnSubmission> => {
     if (!BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
       throw new Error(
@@ -105,6 +110,26 @@ export function useNockBurn() {
     if (chainId !== expectedNetwork.chainId) {
       await switchChainAsync({ chainId: expectedNetwork.chainId });
     }
+    const activeWallet = getAccount(wagmiConfig);
+    if (
+      activeWallet.chainId !== expectedNetwork.chainId ||
+      !activeWallet.address ||
+      getAddress(activeWallet.address) !== getAddress(address)
+    ) {
+      throw new Error(
+        "Base wallet account or chain changed while preparing the withdrawal."
+      );
+    }
+    const burnerAddress = getAddress(activeWallet.address);
+    const expectedPublicClient = selectWithdrawalBurnClient(
+      expectedNetwork.chainId,
+      (expectedChainId) =>
+        getPublicClient(wagmiConfig, {
+          chainId: expectedChainId,
+        })
+    );
+    const burnerCode = await expectedPublicClient.getCode({ address: burnerAddress });
+    assertWithdrawalBurnerCodeSupported(burnerCode);
 
     const amountBaseUnits = nockAmountToTokenUnits(exactAmount.baseUnits);
     const destination = await resolveNockWithdrawalDestination(
@@ -112,13 +137,11 @@ export function useNockBurn() {
     );
     const encoded = encodeNockBurnCalldata({
       nockTokenAddress: expectedNetwork.nockTokenAddress,
-      burnerAddress: address,
+      burnerAddress,
       amountBaseUnits,
       destination,
     });
-    if (!publicClient) {
-      throw new Error("Base RPC client is unavailable.");
-    }
+    const publicClient = expectedPublicClient;
     const submittedTransactionHash = await sendTransactionAsync({
       to: expectedNetwork.nockTokenAddress as Hex,
       data: encoded.calldata,
@@ -135,13 +158,24 @@ export function useNockBurn() {
       amountNicks: encoded.amountNicks.toString(),
     });
     let transactionHash = submittedTransactionHash;
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: submittedTransactionHash,
-      confirmations: 1,
-      onReplaced(replacement) {
-        transactionHash = replacement.transaction.hash;
-      },
-    });
+    let replacementPersistence = Promise.resolve();
+    const receipt = await publicClient
+      .waitForTransactionReceipt({
+        hash: submittedTransactionHash,
+        confirmations: 1,
+        onReplaced(replacement) {
+          const replacementHash = replacement.transaction.hash;
+          transactionHash = replacementHash;
+          replacementPersistence = replacementPersistence.then(async () => {
+            await onReplaced?.(replacementHash);
+          });
+        },
+      })
+      .catch(async (error: unknown) => {
+        await replacementPersistence;
+        throw error;
+      });
+    await replacementPersistence;
     transactionHash = receipt.transactionHash;
     if (receipt.status !== "success") {
       throw new Error("Base burn transaction reverted.");
@@ -151,7 +185,7 @@ export function useNockBurn() {
     });
     if (
       transaction.input.toLowerCase() !== encoded.calldata.toLowerCase() ||
-      getAddress(transaction.from) !== getAddress(address) ||
+      getAddress(transaction.from) !== burnerAddress ||
       transaction.to === null ||
       getAddress(transaction.to) !== getAddress(expectedNetwork.nockTokenAddress)
     ) {
@@ -171,7 +205,7 @@ export function useNockBurn() {
           eventName: "BurnForWithdrawal",
           strict: true,
         });
-        return getAddress(decoded.args.burner) === getAddress(address) &&
+        return getAddress(decoded.args.burner) === burnerAddress &&
           decoded.args.amount === amountBaseUnits &&
           decoded.args.lockRoot.toLowerCase() === encoded.commitment.toLowerCase()
           ? [{ log, decoded }]

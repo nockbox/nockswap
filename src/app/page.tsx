@@ -12,7 +12,10 @@ import {
 } from "@/lib/constants";
 import { BridgeResult, TransactionPreview, useBridge } from "@/hooks/useBridge";
 import { useNockBurn } from "@/hooks/useNockBurn";
-import { useWithdrawalStatus } from "@/hooks/useWithdrawalStatus";
+import {
+  mergeWithdrawalHistory,
+  useWithdrawalStatus,
+} from "@/hooks/useWithdrawalStatus";
 import { useNockBurnGasEstimate } from "@/hooks/useNockBurnGasEstimate";
 import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import { useBaseToNockNockchainFeeEstimate } from "@/hooks/useBaseToNockNockchainFeeEstimate";
@@ -29,6 +32,7 @@ import {
   getPreferredBridgeNetworkConfig,
 } from "@/lib/bridgeNetworkConfig";
 import {
+  assertWithdrawalStorageAvailable,
   loadWithdrawalRecords,
   persistWithdrawalRecord,
   transitionWithdrawalRecord,
@@ -59,7 +63,7 @@ type ResultState =
       destinationNockAddress: string;
       burnNetworkFeeDisplay: string;
       nockchainNetworkFeeDisplay: string;
-      nockchainFeeNicks: bigint | null;
+      quotedNetPayoutNicks: bigint | null;
     }
   | { type: "storage_support"; message: string };
 
@@ -111,20 +115,32 @@ export default function Home() {
   const {
     display: nockchainNetworkFeeDisplay,
     feeNicks: nockchainFeeNicksEstimate,
+    bridgeFeeNicks: withdrawalBridgeFeeNicks,
+    netPayoutNicks: quotedNetPayoutNicks,
+    quote: withdrawalQuote,
     loading: nockchainNetworkFeeLoading,
   } = useBaseToNockNockchainFeeEstimate(
     resultState.type === "confirming_burn" ? resultState.amount : null,
     resultState.type === "confirming_burn"
       ? resultState.destinationNockAddress
-      : null
+      : null,
+    expectedBurnChainId
   );
-  const [activeWithdrawal, setActiveWithdrawal] =
-    useState<PersistedWithdrawalV1 | null>(null);
+  const [withdrawalRecords, setWithdrawalRecords] = useState<
+    PersistedWithdrawalV1[]
+  >([]);
+  const [displayedWithdrawalId, setDisplayedWithdrawalId] = useState<
+    string | null
+  >(null);
   const burnSubmissionInFlight = useRef(false);
   const persistUpdate = useCallback((record: PersistedWithdrawalV1): boolean => {
     try {
       persistWithdrawalRecord(window.localStorage, record);
-      setActiveWithdrawal(record);
+      setWithdrawalRecords((records) =>
+        [record, ...records.filter((candidate) => candidate.recordId !== record.recordId)].sort(
+          (left, right) => right.updatedAt - left.updatedAt
+        )
+      );
       return true;
     } catch (error) {
       setResultState({
@@ -138,25 +154,43 @@ export default function Home() {
     }
   }, []);
   const polling = useWithdrawalStatus(
-    activeWithdrawal,
+    withdrawalRecords,
+    baseAccount,
     expectedBurnNetwork,
     persistUpdate
   );
-  const polledRecord = polling?.record;
-  const pollingError = polling?.transientError ?? null;
+  const withdrawalHistoryRows = useMemo(
+    () => mergeWithdrawalHistory(withdrawalRecords, polling.publicHistory),
+    [polling.publicHistory, withdrawalRecords]
+  );
 
   useEffect(() => {
+    if (!displayedWithdrawalId) return;
+    const polledRecord = polling.records.find(
+      (record) => record.recordId === displayedWithdrawalId
+    );
     if (!polledRecord) return;
-    setResultState({
-      type: "base_to_nock_lifecycle",
-      record: polledRecord,
-      transientError: pollingError,
+    setResultState((current) => {
+      if (
+        current.type === "base_to_nock_lifecycle" &&
+        current.record === polledRecord &&
+        current.transientError === polling.transientError
+      ) {
+        return current;
+      }
+      return {
+        type: "base_to_nock_lifecycle",
+        record: polledRecord,
+        transientError: polling.transientError,
+      };
     });
-  }, [polledRecord, pollingError]);
+  }, [displayedWithdrawalId, polling.records, polling.transientError]);
 
   useEffect(() => {
     if (!baseAccount || !expectedBurnNetwork) {
-      setActiveWithdrawal(null);
+      setWithdrawalRecords([]);
+      setDisplayedWithdrawalId(null);
+      setResultState({ type: "idle" });
       return;
     }
     const loaded = loadWithdrawalRecords(
@@ -169,16 +203,20 @@ export default function Home() {
       setResultState({ type: "storage_support", message: loaded.issue });
       return;
     }
-    const active = loaded.records.find(
-      (record) => record.status !== "confirmed" && record.status !== "failed"
-    );
-    setActiveWithdrawal(active ?? null);
-    if (active) {
+    setWithdrawalRecords(loaded.records);
+    const selected =
+      loaded.records.find(
+        (record) => record.status !== "confirmed" && record.status !== "failed"
+      ) ?? loaded.records[0];
+    setDisplayedWithdrawalId(selected?.recordId ?? null);
+    if (selected) {
       setResultState({
         type: "base_to_nock_lifecycle",
-        record: active,
+        record: selected,
         transientError: null,
       });
+    } else {
+      setResultState({ type: "idle" });
     }
   }, [baseAccount, expectedBurnNetwork]);
 
@@ -198,6 +236,7 @@ export default function Home() {
   };
 
   const handleHomeClick = () => {
+    setDisplayedWithdrawalId(null);
     setResultState({ type: "idle" });
   };
 
@@ -234,7 +273,7 @@ export default function Home() {
       destinationNockAddress,
       burnNetworkFeeDisplay,
       nockchainNetworkFeeDisplay,
-      nockchainFeeNicks: nockchainFeeNicksEstimate,
+      quotedNetPayoutNicks,
     };
     let provisionalRecord: PersistedWithdrawalV1 | undefined;
     try {
@@ -246,11 +285,26 @@ export default function Home() {
       if (!baseAccount || !expectedBurnNetwork) {
         throw new Error("Connected Base account or bridge deployment is unavailable.");
       }
+      assertWithdrawalStorageAvailable(window.localStorage);
+      const quoteAgeMs = Date.now() - (withdrawalQuote?.observedAt ?? 0);
+      if (
+        nockchainNetworkFeeLoading ||
+        withdrawalQuote?.available !== true ||
+        withdrawalQuote.grossAmountNicks !== amount.nicks.toString() ||
+        withdrawalBridgeFeeNicks === null ||
+        nockchainFeeNicksEstimate === null ||
+        quotedNetPayoutNicks === null ||
+        quotedNetPayoutNicks <= 0n ||
+        quoteAgeMs < -5_000 ||
+        quoteAgeMs > 60_000
+      ) {
+        throw new Error(
+          withdrawalQuote?.reason ??
+            "A fresh positive authoritative withdrawal quote is required before burning."
+        );
+      }
       const createdAt = Date.now();
-      const estimatedPayout =
-        amount.nicks -
-        bridgeFeeNicksCeil(amount.nicks) -
-        (nockchainFeeNicksEstimate ?? 0n);
+      const estimatedPayout = quotedNetPayoutNicks;
       const submission = await burnNock(
         amount,
         destinationNockAddress,
@@ -280,6 +334,13 @@ export default function Home() {
             actualPayoutNicks: null,
             nockTransactionId: null,
             nockBlockId: null,
+            authoritativeRevision: "0",
+            recoveryGeneration: 0,
+            publicResolution: null,
+            priorAuthoritativeStatus: null,
+            invalidatedBlockNumber: null,
+            invalidatedBlockHash: null,
+            recoveryReason: null,
             status: "awaiting_base",
             createdAt,
             updatedAt: createdAt,
@@ -300,11 +361,28 @@ export default function Home() {
             ],
           };
           if (persistUpdate(provisionalRecord)) {
+            setDisplayedWithdrawalId(provisionalRecord.recordId);
             setResultState({
               type: "base_to_nock_lifecycle",
               record: provisionalRecord,
               transientError: null,
             });
+          }
+        },
+        (replacementHash) => {
+          if (!provisionalRecord) {
+            throw new Error("Replacement arrived before submission was persisted.");
+          }
+          const replaced = transitionWithdrawalRecord(
+            provisionalRecord,
+            "awaiting_base",
+            Date.now(),
+            `Base transaction replaced by ${replacementHash}.`,
+            { transactionHash: replacementHash }
+          );
+          provisionalRecord = replaced;
+          if (!persistUpdate(replaced)) {
+            throw new Error("Replacement transaction identity could not be persisted.");
           }
         }
       );
@@ -325,6 +403,7 @@ export default function Home() {
         }
       );
       if (!persistUpdate(record)) return;
+      setDisplayedWithdrawalId(record.recordId);
       setResultState({
         type: "base_to_nock_lifecycle",
         record,
@@ -340,7 +419,8 @@ export default function Home() {
             ? `Base receipt requires support: ${err.message}`
             : "Base receipt outcome is unknown; do not retry."
         );
-        persistUpdate(support);
+        if (!persistUpdate(support)) return;
+        setDisplayedWithdrawalId(support.recordId);
         setResultState({
           type: "base_to_nock_lifecycle",
           record: support,
@@ -373,18 +453,6 @@ export default function Home() {
     return formatNicksAsNock(amountInNicks - bridgeFeeNicks);
   };
 
-  const calculateBaseToNockAmountAfterFees = (
-    amount: ExactNockAmount,
-    nockchainFeeNicks: bigint | null
-  ): string => {
-    const bridgeFeeNicks = bridgeFeeNicksCeil(amount.nicks);
-    const amountAfterBridgeFee = amount.nicks - bridgeFeeNicks;
-    const amountAfterAllFees =
-      nockchainFeeNicks !== null
-        ? amountAfterBridgeFee - nockchainFeeNicks
-        : amountAfterBridgeFee;
-    return formatNicksAsNock(amountAfterAllFees);
-  };
 
   return (
     <PageLayout>
@@ -461,12 +529,18 @@ export default function Home() {
                 }
                 lifecycleDetail={
                   resultState.transientError ??
-                  resultState.record.history.at(-1)?.detail
+                  (resultState.record.status === "support" ||
+                  resultState.record.status === "failed"
+                    ? undefined
+                    : resultState.record.history.at(-1)?.detail)
                 }
                 lifecycleHistory={resultState.record.history}
                 networkFeePercent={PROTOCOL_FEE_DISPLAY}
                 networkFeeAmount="Verified in Base receipt"
                 nockchainNetworkFeeAmount="Estimated until settlement"
+                confirmingBridgeFeeNicks={bridgeFeeNicksCeil(
+                  BigInt(resultState.record.amountNicks)
+                )}
                 totalNock={`${
                   resultState.record.actualPayoutNicks
                     ? formatNicksAsNock(
@@ -526,10 +600,11 @@ export default function Home() {
                     ? resultState.nockchainNetworkFeeDisplay
                     : undefined
                 }
-                totalNock={`${calculateBaseToNockAmountAfterFees(
-                  resultState.amount,
-                  resultState.nockchainFeeNicks
-                )} NOCK`}
+                totalNock={
+                  resultState.quotedNetPayoutNicks === null
+                    ? "Authoritative quote unavailable"
+                    : `${formatNicksAsNock(resultState.quotedNetPayoutNicks)} NOCK`
+                }
                 totalUsd=""
                 receivingAddress={truncateAddress(
                   resultState.destinationNockAddress
@@ -583,15 +658,23 @@ export default function Home() {
                 onHomeClick={handleCancel}
                 onConfirm={handleConfirmBurn}
                 bridgeStatus={bridgeStatus}
-                confirmingAmountInNicks={resultState.amount.nicks}
                 nockchainNetworkFeeAmount={nockchainNetworkFeeDisplay}
                 nockchainNetworkFeeLoading={nockchainNetworkFeeLoading}
-                confirmingNockchainFeeNicks={nockchainFeeNicksEstimate}
+                confirmingBridgeFeeNicks={withdrawalBridgeFeeNicks}
+                confirmingNetPayoutNicks={quotedNetPayoutNicks}
                 confirmSubmitting={isBurnPending}
                 confirmDisabledReason={
                   burnContractReadiness.loading
                     ? "Checking Base bridge contracts..."
-                    : burnContractReadiness.reason
+                    : burnContractReadiness.reason ??
+                      (nockchainNetworkFeeLoading
+                        ? "Loading an authoritative withdrawal quote..."
+                        : withdrawalQuote?.available !== true
+                          ? withdrawalQuote?.reason ??
+                            "An authoritative withdrawal quote is required."
+                          : Date.now() - withdrawalQuote.observedAt > 60_000
+                            ? "The withdrawal quote is stale. Wait for a fresh quote."
+                            : null)
                 }
               />
             ) : (
@@ -636,6 +719,104 @@ export default function Home() {
                 onHomeClick={handleHomeClick}
                 result={resultState.type === "success" ? resultState.result : undefined}
               />
+            )}
+            {withdrawalHistoryRows.length > 0 && (
+              <section
+                aria-labelledby="withdrawal-history-heading"
+                style={{
+                  marginTop: 16,
+                  padding: 20,
+                  border: `1px solid ${theme.cardBorder}`,
+                  borderRadius: 16,
+                  background: theme.cardBg,
+                  color: theme.textPrimary,
+                }}
+              >
+                <h2
+                  id="withdrawal-history-heading"
+                  style={{ margin: 0, fontSize: 16, fontWeight: 650 }}
+                >
+                  Withdrawal history
+                </h2>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: "14px 0 0",
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  {withdrawalHistoryRows.map((row) => (
+                    <li
+                      key={row.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        paddingTop: 12,
+                        borderTop: `1px solid ${theme.dividerColor}`,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 600,
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {row.status.replaceAll("_", " ")}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 3,
+                            fontSize: 12,
+                            opacity: 0.72,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={row.identity}
+                        >
+                          {truncateAddress(row.identity, 7)} · revision {row.revision}
+                        </div>
+                      </div>
+                      {row.localRecord && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const record = row.localRecord;
+                            if (!record) return;
+                            setDisplayedWithdrawalId(record.recordId);
+                            setResultState({
+                              type: "base_to_nock_lifecycle",
+                              record,
+                              transientError: polling.transientError,
+                            });
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            border: `1px solid ${theme.headerButtonBorder}`,
+                            borderRadius: 10,
+                            background: theme.headerButtonBg,
+                            color: theme.textPrimary,
+                            padding: "8px 11px",
+                            font: "inherit",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          View withdrawal
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </div>
         </>

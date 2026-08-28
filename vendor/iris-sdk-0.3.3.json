@@ -2,7 +2,7 @@
   "schema_version": 1,
   "package_name": "@nockbox/iris-sdk",
   "package_version": "0.3.3",
-  "git_revision": "2042a19ac53b0876ca1b36ba6b58320436bdaf9b",
+  "git_revision": "c5ebc277ff89a508f4eede82f95e8d22765c8ba2",
   "tarball": "nockbox-iris-sdk-0.3.3.tgz",
   "sha256": "2a8fc907d01764e7f4b8eee6c7919dc4c67719c2e0afc9fe59dd302bbb0373bc",
   "npm_integrity": "sha512-OZcaQy1oaIUreSg5l5Q8J9C1E9KKSI47LHoeQFKVC+/yFZZD0CnsYhM732KO1tIcASATpNE9sKvH/2fjIpRpIw=="

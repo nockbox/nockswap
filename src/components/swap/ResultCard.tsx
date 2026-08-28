@@ -4,7 +4,6 @@ import { useState } from "react";
 import Image from "next/image";
 import {
   ASSETS,
-  bridgeFeeNicksCeil,
   bridgeFeeNicksFloor,
   PROTOCOL_FEE_DISPLAY,
 } from "@/lib/constants";
@@ -62,8 +61,8 @@ interface ResultCardProps {
   preview?: TransactionPreview;
   bridgeStatus?: BridgeStatus;
   result?: BridgeResult;
-  confirmingAmountInNicks?: bigint;
-  confirmingNockchainFeeNicks?: bigint | null;
+  confirmingBridgeFeeNicks?: bigint | null;
+  confirmingNetPayoutNicks?: bigint | null;
   confirmSubmitting?: boolean;
   confirmDisabledReason?: string | null;
 }
@@ -94,8 +93,8 @@ export default function ResultCard({
   preview,
   bridgeStatus,
   result,
-  confirmingAmountInNicks,
-  confirmingNockchainFeeNicks,
+  confirmingBridgeFeeNicks,
+  confirmingNetPayoutNicks,
   confirmSubmitting = false,
   confirmDisabledReason,
 }: ResultCardProps) {
@@ -134,39 +133,51 @@ export default function ResultCard({
       ? "Confirmed"
       : "Failed";
   const theme = getCardTheme(isDarkMode);
+  const fromNetworkName =
+    flowDirection === "base_to_nock" ? "Base" : "Nockchain";
+  const toNetworkName =
+    flowDirection === "base_to_nock" ? "Nockchain" : "Base";
+  const fromNetworkIcon =
+    flowDirection === "base_to_nock" ? ASSETS.baseLogo : ASSETS.nockchainIcon;
+  const toNetworkIcon =
+    flowDirection === "base_to_nock" ? ASSETS.nockchainIcon : ASSETS.baseLogo;
   const confirmDisabled = Boolean(
     confirmDisabledReason ||
       confirmSubmitting ||
       bridgeStatus === "awaiting_signature" ||
       bridgeStatus === "pending"
   );
+  const payoutLabel =
+    flowDirection === "base_to_nock"
+      ? status === "confirmed"
+        ? "You received"
+        : "Estimated payout"
+      : isSuccess
+      ? "You received"
+      : "You will receive";
 
-  // Calculate bridge fee for confirming state.
   const calculateBridgeFee = (): string => {
-    // Confirming flow has `preview`; success flow only has `result` (see page.tsx).
-    const amountInNicks =
-      preview?.amountInNicks ?? result?.amountInNicks ?? confirmingAmountInNicks;
+    if (flowDirection === "base_to_nock") {
+      return confirmingBridgeFeeNicks === null ||
+        confirmingBridgeFeeNicks === undefined
+        ? "Authoritative quote unavailable"
+        : `${formatNicksAsNock(confirmingBridgeFeeNicks)} NOCK`;
+    }
+    const amountInNicks = preview?.amountInNicks ?? result?.amountInNicks;
     if (amountInNicks === undefined) return "0 NOCK";
-    const bridgeFeeNicks =
-      flowDirection === "base_to_nock"
-        ? bridgeFeeNicksCeil(amountInNicks)
-        : bridgeFeeNicksFloor(amountInNicks);
-    return `${formatNicksAsNock(bridgeFeeNicks)} NOCK`;
+    return `${formatNicksAsNock(bridgeFeeNicksFloor(amountInNicks))} NOCK`;
   };
 
-  // Calculate amount after bridge fee deduction
   const calculateAmountAfterBridgeFee = (): string => {
-    if (flowDirection === "base_to_nock" && confirmingAmountInNicks !== undefined) {
-      const bridgeFeeNicks = bridgeFeeNicksCeil(confirmingAmountInNicks);
-      const nockchainFeeNicks = confirmingNockchainFeeNicks ?? 0n;
-      const amountAfterFees =
-        confirmingAmountInNicks - bridgeFeeNicks - nockchainFeeNicks;
-      return `${formatNicksAsNock(amountAfterFees)} NOCK`;
+    if (flowDirection === "base_to_nock") {
+      return confirmingNetPayoutNicks === null ||
+        confirmingNetPayoutNicks === undefined
+        ? "Authoritative quote unavailable"
+        : `${formatNicksAsNock(confirmingNetPayoutNicks)} NOCK`;
     }
     if (!preview) return totalNock;
     const bridgeFeeNicks = bridgeFeeNicksFloor(preview.amountInNicks);
-    const amountAfterFee = preview.amountInNicks - bridgeFeeNicks;
-    return `${formatNicksAsNock(amountAfterFee)} NOCK`;
+    return `${formatNicksAsNock(preview.amountInNicks - bridgeFeeNicks)} NOCK`;
   };
 
   const handleCopyAddress = async () => {
@@ -431,12 +442,13 @@ export default function ResultCard({
                   border: `2px solid ${theme.networkBadgeBorder}`,
                   overflow: "hidden",
                   boxSizing: "border-box",
-                  background: "#1a1a1a",
+                  background:
+                    flowDirection === "base_to_nock" ? "#fff" : "#1a1a1a",
                 }}
               >
                 <Image
-                  src={ASSETS.nockchainIcon}
-                  alt="Nockchain"
+                  src={fromNetworkIcon}
+                  alt={fromNetworkName}
                   width={14}
                   height={14}
                   style={{
@@ -480,7 +492,7 @@ export default function ResultCard({
                   opacity: 0.5,
                 }}
               >
-                Nockchain
+                {fromNetworkName}
               </span>
             </div>
           </div>
@@ -555,7 +567,7 @@ export default function ResultCard({
                   opacity: 0.5,
                 }}
               >
-                Base
+                {toNetworkName}
               </span>
             </div>
             <div
@@ -589,12 +601,13 @@ export default function ResultCard({
                   border: `2px solid ${theme.networkBadgeBorder}`,
                   overflow: "hidden",
                   boxSizing: "border-box",
-                  background: "#fff",
+                  background:
+                    flowDirection === "base_to_nock" ? "#1a1a1a" : "#fff",
                 }}
               >
                 <Image
-                  src={ASSETS.baseLogo}
-                  alt="Base"
+                  src={toNetworkIcon}
+                  alt={toNetworkName}
                   width={14}
                   height={14}
                   style={{
@@ -760,7 +773,7 @@ export default function ResultCard({
                 letterSpacing: isMobile ? 0.14 : 0.15,
               }}
             >
-              You will receive
+              {payoutLabel}
             </span>
             <div
               style={{

@@ -1,11 +1,10 @@
-// Bridge fee: 195 nicks per 65_536 nicks (1 NOCK). Slightly under 0.3%; integer nicks avoids float drift.
-export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
+import { WITHDRAWAL_POLICY_V1 } from "@nockbox/iris-sdk";
+
 export const PROTOCOL_FEE_DISPLAY = "0.3%";
+export const PROTOCOL_FEE_NICKS_PER_NOCK =
+  WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock;
+export const NICKS_PER_NOCK = WITHDRAWAL_POLICY_V1.nicksPerNock;
 
-/** 1 NOCK = 2^16 nicks. */
-export const NICKS_PER_NOCK = 65_536n;
-
-/** Floor nicks to a whole-NOCK boundary so bridge fee math matches on-chain integer semantics. */
 export function toWholeNockNicks(nicks: bigint): bigint {
   if (nicks <= 0n) {
     return 0n;
@@ -13,28 +12,30 @@ export function toWholeNockNicks(nicks: bigint): bigint {
   return (nicks / NICKS_PER_NOCK) * NICKS_PER_NOCK;
 }
 
-/** Nockchain -> Base bridge fee: whole-NOCK chunks, rounded down. */
 export function bridgeFeeNicksFloor(amountInNicks: bigint): bigint {
   if (amountInNicks <= 0n) {
     return 0n;
   }
-  return (amountInNicks / NICKS_PER_NOCK) * PROTOCOL_FEE_NICKS_PER_NOCK;
+  return (
+    (amountInNicks / NICKS_PER_NOCK) *
+    WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock
+  );
 }
 
-/** Base -> Nock withdrawal bridge fee: whole-NOCK chunks, rounded up. */
 export function bridgeFeeNicksCeil(amountInNicks: bigint): bigint {
   if (amountInNicks <= 0n) {
     return 0n;
   }
   return (
     ((amountInNicks + NICKS_PER_NOCK - 1n) / NICKS_PER_NOCK) *
-    PROTOCOL_FEE_NICKS_PER_NOCK
+    WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock
   );
 }
 
-export const MIN_BRIDGE_AMOUNT_NOCK = 100_000n;
+export const MIN_BRIDGE_AMOUNT_NOCK =
+  WITHDRAWAL_POLICY_V1.minimumGrossNocks;
 export const MIN_BRIDGE_AMOUNT_NICKS =
-  MIN_BRIDGE_AMOUNT_NOCK * NICKS_PER_NOCK;
+  WITHDRAWAL_POLICY_V1.minimumGrossNicks;
 
 /**
  * Explicit deployment gate for the Base-to-Nockchain withdrawal path. Missing,

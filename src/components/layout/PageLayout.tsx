@@ -204,7 +204,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                   lineHeight: "14px",
                 }}
               >
-                →
+                ↔
               </span>
               <span
                 style={{
@@ -217,7 +217,7 @@ export default function PageLayout({ children, mainStyle }: PageLayoutProps) {
                   lineHeight: "16px",
                 }}
               >
-                Nockchain to Base
+                Nockchain · Base
               </span>
             </div>
             <button

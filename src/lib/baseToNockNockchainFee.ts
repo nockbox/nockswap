@@ -7,10 +7,7 @@ import type {
   SpendCondition,
   TxEngineSettings,
 } from "@nockbox/iris-wasm";
-import {
-  bridgeFeeNicksCeil,
-  toWholeNockNicks,
-} from "@/lib/constants";
+import { bridgeFeeNicksCeil } from "@/lib/constants";
 import type { BridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 
 function parseDigestString(value: string, field: string): Digest {
@@ -182,16 +179,12 @@ export async function estimateBaseToNockNockchainFeeNicks(
   params: EstimateBaseToNockNockchainFeeParams
 ): Promise<bigint> {
   const {
+    burnedAmountNicks,
     recipientNockAddress,
     grpcEndpoint,
     bridgeNetwork,
     txEngineSettings,
   } = params;
-  let { burnedAmountNicks } = params;
-  burnedAmountNicks = toWholeNockNicks(burnedAmountNicks);
-  if (burnedAmountNicks <= 0n) {
-    throw new Error("Burn amount must be at least 1 whole NOCK in nicks.");
-  }
 
   const wasm = await import("@nockbox/iris-wasm");
   if (typeof wasm.default === "function") {

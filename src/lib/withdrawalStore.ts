@@ -43,6 +43,13 @@ export interface PersistedWithdrawalV1 {
   actualPayoutNicks: string | null;
   nockTransactionId: string | null;
   nockBlockId: string | null;
+  authoritativeRevision: string;
+  recoveryGeneration: number;
+  publicResolution: string | null;
+  priorAuthoritativeStatus: string | null;
+  invalidatedBlockNumber: string | null;
+  invalidatedBlockHash: Hex | null;
+  recoveryReason: string | null;
   status: WithdrawalLifecycleStatus;
   createdAt: number;
   updatedAt: number;
@@ -111,6 +118,29 @@ export function loadWithdrawalRecords(
     issue: null,
   };
 }
+export function assertWithdrawalStorageAvailable(storage: StorageLike): void {
+  let current: string | null;
+  try {
+    current = storage.getItem(STORE_KEY);
+    const probe = current ?? "[]";
+    storage.setItem(STORE_KEY, probe);
+    if (storage.getItem(STORE_KEY) !== probe) {
+      throw new Error("Withdrawal history storage did not retain its write probe.");
+    }
+    const records = loadAll(storage);
+    if (records.length >= MAX_RECORDS) {
+      throw new Error(
+        `Withdrawal history capacity (${MAX_RECORDS}) is reached; preserve or export existing records before another burn.`
+      );
+    }
+  } catch (cause) {
+    throw new Error(
+      cause instanceof Error
+        ? `Withdrawal history storage is unavailable: ${cause.message}`
+        : "Withdrawal history storage is unavailable."
+    );
+  }
+}
 
 export function persistWithdrawalRecord(
   storage: StorageLike,
@@ -119,6 +149,12 @@ export function persistWithdrawalRecord(
   const valid = parseWithdrawalRecord(record);
   if (!valid) throw new Error("Refusing to persist invalid withdrawal record.");
   const existing = loadAll(storage);
+  const replacingExisting = existing.some((item) => item.recordId === valid.recordId);
+  if (!replacingExisting && existing.length >= MAX_RECORDS) {
+    throw new Error(
+      `Withdrawal history capacity (${MAX_RECORDS}) is reached; refusing to evict a revision-tracked withdrawal.`
+    );
+  }
   const duplicate = existing.find(
     (item) =>
       item.recordId !== valid.recordId &&
@@ -128,9 +164,9 @@ export function persistWithdrawalRecord(
   if (duplicate) {
     throw new Error("A withdrawal with this Base transaction/log already exists.");
   }
-  const next = [valid, ...existing.filter((item) => item.recordId !== valid.recordId)]
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .slice(0, MAX_RECORDS);
+  const next = [valid, ...existing.filter((item) => item.recordId !== valid.recordId)].sort(
+    (left, right) => right.updatedAt - left.updatedAt
+  );
   storage.setItem(STORE_KEY, JSON.stringify(next));
 }
 
@@ -150,6 +186,13 @@ export function transitionWithdrawalRecord(
       | "actualPayoutNicks"
       | "nockTransactionId"
       | "nockBlockId"
+      | "authoritativeRevision"
+      | "recoveryGeneration"
+      | "publicResolution"
+      | "priorAuthoritativeStatus"
+      | "invalidatedBlockNumber"
+      | "invalidatedBlockHash"
+      | "recoveryReason"
     >
   > = {}
 ): PersistedWithdrawalV1 {
@@ -173,7 +216,12 @@ export function transitionWithdrawalRecord(
     ...facts,
     status,
     updatedAt: observedAt,
-    confirmedAt: status === "confirmed" ? observedAt : record.confirmedAt,
+    confirmedAt:
+      status === "confirmed"
+        ? observedAt
+        : record.status === "confirmed"
+          ? null
+          : record.confirmedAt,
     history,
   };
   const valid = parseWithdrawalRecord(next);
@@ -228,6 +276,22 @@ function parseWithdrawalRecord(value: unknown): PersistedWithdrawalV1 | null {
   const account = normalizeAddress(record.account);
   const token = normalizeAddress(record.nockTokenAddress);
   const inbox = normalizeAddress(record.messageInboxAddress);
+  const authoritativeRevision =
+    record.authoritativeRevision === undefined ? "0" : record.authoritativeRevision;
+  const recoveryGeneration =
+    record.recoveryGeneration === undefined ? 0 : record.recoveryGeneration;
+  const publicResolution =
+    record.publicResolution === undefined ? null : record.publicResolution;
+  const priorAuthoritativeStatus =
+    record.priorAuthoritativeStatus === undefined
+      ? null
+      : record.priorAuthoritativeStatus;
+  const invalidatedBlockNumber =
+    record.invalidatedBlockNumber === undefined ? null : record.invalidatedBlockNumber;
+  const invalidatedBlockHash =
+    record.invalidatedBlockHash === undefined ? null : record.invalidatedBlockHash;
+  const recoveryReason =
+    record.recoveryReason === undefined ? null : record.recoveryReason;
   if (
     record.schemaVersion !== WITHDRAWAL_STORE_SCHEMA_VERSION ||
     typeof record.recordId !== "string" ||
@@ -258,6 +322,15 @@ function parseWithdrawalRecord(value: unknown): PersistedWithdrawalV1 | null {
     (record.nockTransactionId !== null &&
       typeof record.nockTransactionId !== "string") ||
     (record.nockBlockId !== null && typeof record.nockBlockId !== "string") ||
+    !isDecimal(authoritativeRevision) ||
+    !Number.isSafeInteger(recoveryGeneration) ||
+    recoveryGeneration < 0 ||
+    (publicResolution !== null && !isPublicResolution(publicResolution)) ||
+    (priorAuthoritativeStatus !== null &&
+      typeof priorAuthoritativeStatus !== "string") ||
+    (invalidatedBlockNumber !== null && !isDecimal(invalidatedBlockNumber)) ||
+    (invalidatedBlockHash !== null && !isRecoveryBlockHash(invalidatedBlockHash)) ||
+    (recoveryReason !== null && typeof recoveryReason !== "string") ||
     !isStatus(record.status) ||
     !Number.isSafeInteger(record.createdAt) ||
     (record.createdAt ?? 0) <= 0 ||
@@ -280,6 +353,13 @@ function parseWithdrawalRecord(value: unknown): PersistedWithdrawalV1 | null {
     account,
     nockTokenAddress: token,
     messageInboxAddress: inbox,
+    authoritativeRevision,
+    recoveryGeneration,
+    publicResolution,
+    priorAuthoritativeStatus,
+    invalidatedBlockNumber,
+    invalidatedBlockHash,
+    recoveryReason,
   };
 }
 
@@ -312,8 +392,8 @@ function allowedTransition(
     withdrawal_pending: ["confirmed", "delayed", "failed", "support"],
     delayed: ["withdrawal_pending", "confirmed", "failed", "support"],
     confirmed: ["withdrawal_pending", "support"],
-    failed: ["support"],
-    support: ["withdrawal_pending", "confirmed"],
+    failed: ["withdrawal_pending", "confirmed", "support"],
+    support: ["withdrawal_pending", "confirmed", "failed"],
   };
   return allowed[from].includes(to);
 }
@@ -328,6 +408,12 @@ function isHex32(value: unknown): value is Hex {
   return typeof value === "string" && /^0x[0-9a-f]{64}$/i.test(value);
 }
 
+function isRecoveryBlockHash(value: unknown): value is Hex {
+  return (
+    typeof value === "string" && /^0x(?:[0-9a-f]{64}|[0-9a-f]{80})$/i.test(value)
+  );
+}
+
 function isDecimal(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value);
 }
@@ -336,6 +422,19 @@ function isNullableDecimal(value: unknown): value is string | null {
   return value === null || isDecimal(value);
 }
 
+
+function isPublicResolution(value: unknown): value is string {
+  return (
+    value === "found" ||
+    value === "not_observed" ||
+    value === "ambiguous_log" ||
+    value === "malformed_burn" ||
+    value === "below_policy" ||
+    value === "reorged" ||
+    value === "inconsistent" ||
+    value === "compensated"
+  );
+}
 function isStatus(value: unknown): value is WithdrawalLifecycleStatus {
   return (
     value === "awaiting_wallet" ||

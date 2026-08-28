@@ -77,10 +77,8 @@ const scenarios: RealScenario[] = [
     async run(page, wallet) {
       const swap = await prepareReview(page, wallet);
       await wallet.disconnect();
-      await swap.confirm();
-      await expect(page.getByTestId("result-error")).toContainText(
-        /account|deployment is unavailable/i
-      );
+      await expect(swap.confirmAction).toHaveCount(0);
+      await expect(swap.primaryAction).toBeVisible();
       return { sends: 0 };
     },
   },

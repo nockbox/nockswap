@@ -1,8 +1,20 @@
+import fs from "node:fs";
+
 import { test } from "./fixtures/diagnostics";
 import { SwapPage } from "./pages/swap-page";
 
-const TOKEN = testAddress("1");
-const INBOX = testAddress("3");
+interface LifecycleManifest {
+  schema_version: 1;
+  chain_id: 31338;
+  contracts: Record<string, string>;
+  bridge_signer_pkhs: string[];
+  bridge_threshold: number;
+  public_status_url: string;
+}
+
+const manifest = loadManifest();
+const TOKEN = requiredContract("nock");
+const INBOX = requiredContract("message_inbox");
 const TX = `0x${"1".repeat(64)}`;
 const BLOCK = `0x${"2".repeat(64)}`;
 const EVENT = `0x${"3".repeat(64)}`;
@@ -15,14 +27,14 @@ const DESTINATION = [
   "12iDkvh",
 ].join("");
 
-test("pending withdrawal survives reload and confirms only with terminal proof", async ({
+test("revisioned withdrawal survives reload, reorgs, and resumes safely", async ({
   page,
   testWallet,
   diagnostics,
 }) => {
   const createdAt = Date.now();
   await page.addInitScript(
-    ({ account, token, inbox, tx, block, event, commitment, destination, created }) => {
+    ({ account, chainId, token, inbox, tx, block, event, commitment, destination, created }) => {
       localStorage.setItem(
         "nockswap.withdrawals.v1",
         JSON.stringify([
@@ -30,7 +42,7 @@ test("pending withdrawal survives reload and confirms only with terminal proof",
             schemaVersion: 1,
             recordId: event,
             account,
-            chainId: 31338,
+            chainId,
             nockTokenAddress: token,
             messageInboxAddress: inbox,
             submittedTransactionHash: tx,
@@ -67,6 +79,7 @@ test("pending withdrawal survives reload and confirms only with terminal proof",
     },
     {
       account: testWallet.account,
+      chainId: manifest.chain_id,
       token: TOKEN,
       inbox: INBOX,
       tx: TX,
@@ -78,43 +91,82 @@ test("pending withdrawal survives reload and confirms only with terminal proof",
     }
   );
 
-  let terminal = false;
-  await page.route("http://127.0.0.1:19090/status**", async (route) => {
+  let lifecycle: "submitted" | "terminal" | "reorg" | "resumed" = "submitted";
+  await page.route(`${manifest.public_status_url}**`, async (route) => {
     const url = new URL(route.request().url());
-    if (!url.searchParams.has("base_event_id")) {
+    if (!url.searchParams.has("history")) {
+      const observedAt = Date.now();
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
           schemaVersion: 1,
-          observedAt: Date.now(),
+          observedAt,
           ready: true,
-          chainId: 31338,
+          chainId: manifest.chain_id,
           nockTokenAddress: TOKEN,
           messageInboxAddress: INBOX,
-          bridgeSignerPkhs: ["signer-1"],
-          bridgeThreshold: 1,
+          bridgeSignerPkhs: manifest.bridge_signer_pkhs,
+          bridgeThreshold: manifest.bridge_threshold,
           withdrawalsEnabled: true,
           withdrawalWireProtocol: "WithdrawalWireV1",
           withdrawalPolicyId: "withdrawal-policy-v1",
           irisSdkVersion: "0.3.3",
           reason: null,
+          baseObservedAt: observedAt,
+          operatorAdmissionEnabled: true,
+          contractGateEnabled: true,
+          minimumGrossNocks: "100000",
+          minimumGrossNicks: "6553600000",
+          minimumGrossBaseUnits: "1000000000000000000000",
+          baseUnitsPerNock: "10000000000000000",
+          nicksPerNock: "65536",
+          baseUnitsPerNick: "152587890625",
+          bridgeFeeNicksPerStartedNock: "195",
+          maximumNicks: "18446744073709551615",
         }),
       });
       return;
     }
+    const terminal = lifecycle === "terminal";
+    const reorged = lifecycle === "reorg";
+    const status = {
+      schemaVersion: 2,
+      withdrawalId: "withdrawal-1",
+      baseEventId: EVENT,
+      status: terminal
+        ? "terminal"
+        : reorged
+          ? "reorg_hold"
+          : lifecycle === "resumed"
+            ? "pending"
+            : "submitted",
+      resolution: reorged ? "reorged" : "found",
+      revision:
+        lifecycle === "submitted"
+          ? "1"
+          : lifecycle === "terminal"
+            ? "2"
+            : lifecycle === "reorg"
+              ? "3"
+              : "4",
+      recoveryGeneration: reorged || lifecycle === "resumed" ? 1 : 0,
+      terminalProof: terminal,
+      nockTransactionId: terminal ? "nock-tx-1" : null,
+      nockBlockId: terminal ? "nock-block-1" : null,
+      actualPayoutNicks: terminal ? "6500000000" : null,
+      invalidatedBlockNumber: reorged ? "700" : null,
+      invalidatedBlockHash: reorged ? BLOCK : null,
+      priorStatus: reorged ? "terminal" : null,
+      recoveryReason: reorged ? "Confirmed inclusion was orphaned." : null,
+      observedAt: Date.now(),
+      reason: reorged ? "Confirmed inclusion was orphaned." : null,
+    };
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         schemaVersion: 1,
-        withdrawalId: "withdrawal-1",
-        baseEventId: EVENT,
-        status: terminal ? "terminal" : "submitted",
-        terminalProof: terminal,
-        nockTransactionId: terminal ? "nock-tx-1" : null,
-        nockBlockId: terminal ? "nock-block-1" : null,
-        actualPayoutNicks: terminal ? "6500000000" : null,
-        observedAt: Date.now(),
-        reason: null,
+        revision: status.revision,
+        records: [status],
       }),
     });
   });
@@ -126,7 +178,7 @@ test("pending withdrawal survives reload and confirms only with terminal proof",
   await page.reload();
   await testWallet.connect();
   await swap.expectLifecycleState("pending");
-  terminal = true;
+  lifecycle = "terminal";
   await swap.expectLifecycleState("confirmed");
   const references = await swap.readReferences();
   if (
@@ -137,11 +189,45 @@ test("pending withdrawal survives reload and confirms only with terminal proof",
       `withdrawal references diverged: ${JSON.stringify(references)}`
     );
   }
+  lifecycle = "reorg";
+  await swap.expectLifecycleState("support");
+  const reorgReferences = await swap.readReferences();
+  if (reorgReferences.nockchain !== null) {
+    throw new Error(
+      `reorg retained stale Nockchain reference: ${JSON.stringify(reorgReferences)}`
+    );
+  }
+  lifecycle = "resumed";
+  await swap.expectLifecycleState("pending");
   await diagnostics.captureCheckpoint("withdrawal-confirmed-after-reload");
   await diagnostics.assertViewportFits();
   diagnostics.assertNoCriticalConsole();
 });
 
-function testAddress(digit: string): `0x${string}` {
-  return `0x${digit.repeat(40)}`;
+
+function loadManifest(): LifecycleManifest {
+  const manifestPath = process.env.NOCKSWAP_E2E_MANIFEST;
+  if (!manifestPath) throw new Error("NOCKSWAP_E2E_MANIFEST is required");
+  const value: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    (value as Partial<LifecycleManifest>).schema_version !== 1 ||
+    (value as Partial<LifecycleManifest>).chain_id !== 31338 ||
+    typeof (value as Partial<LifecycleManifest>).public_status_url !== "string" ||
+    !Array.isArray((value as Partial<LifecycleManifest>).bridge_signer_pkhs) ||
+    !Number.isSafeInteger((value as Partial<LifecycleManifest>).bridge_threshold) ||
+    typeof (value as Partial<LifecycleManifest>).contracts !== "object" ||
+    (value as Partial<LifecycleManifest>).contracts === null
+  ) {
+    throw new Error("withdrawal lifecycle manifest is invalid");
+  }
+  return value as LifecycleManifest;
+}
+
+function requiredContract(name: string): string {
+  const address = manifest.contracts[name];
+  if (!address) throw new Error(`withdrawal lifecycle manifest is missing ${name}`);
+  return address;
 }

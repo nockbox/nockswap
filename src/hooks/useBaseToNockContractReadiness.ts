@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getAddress, isAddress } from "viem";
 import type { Address } from "viem";
 import { useChainId, useReadContracts } from "wagmi";
+import { WITHDRAWAL_POLICY_V1 } from "@nockbox/iris-sdk";
 
 import {
   getBridgeNetworkConfig,
@@ -51,6 +52,17 @@ export interface PublicBridgeReadiness {
   withdrawalPolicyId: string;
   irisSdkVersion: string;
   reason: string | null;
+  baseObservedAt: number | null;
+  operatorAdmissionEnabled: boolean;
+  contractGateEnabled: boolean;
+  minimumGrossNocks: string;
+  minimumGrossNicks: string;
+  minimumGrossBaseUnits: string;
+  baseUnitsPerNock: string;
+  nicksPerNock: string;
+  baseUnitsPerNick: string;
+  bridgeFeeNicksPerStartedNock: string;
+  maximumNicks: string;
 }
 
 export interface BaseToNockContractReadiness {
@@ -121,8 +133,12 @@ export function evaluateBaseToNockReadiness(
     blockers.push("Authoritative bridge readiness is unavailable.");
   } else {
     const status = inputs.status;
-    if (inputs.now - status.observedAt > 60_000) {
-      blockers.push("Authoritative bridge readiness is stale.");
+    if (
+      status.baseObservedAt === null ||
+      inputs.now - status.baseObservedAt < -5_000 ||
+      inputs.now - status.baseObservedAt > 60_000
+    ) {
+      blockers.push("Authoritative Base observation is stale.");
     }
     if (!status.ready) {
       blockers.push(status.reason ?? "Backend reports withdrawals are not ready.");
@@ -149,6 +165,29 @@ export function evaluateBaseToNockReadiness(
     }
     if (!status.withdrawalsEnabled) {
       blockers.push("Backend reports the withdrawal gate is disabled.");
+    }
+    if (!status.operatorAdmissionEnabled) {
+      blockers.push("Backend operator admission is disabled.");
+    }
+    if (!status.contractGateEnabled) {
+      blockers.push("Backend has not observed the on-chain withdrawal gate enabled.");
+    }
+    if (
+      status.minimumGrossNocks !==
+        WITHDRAWAL_POLICY_V1.minimumGrossNocks.toString() ||
+      status.minimumGrossNicks !==
+        WITHDRAWAL_POLICY_V1.minimumGrossNicks.toString() ||
+      status.minimumGrossBaseUnits !==
+        WITHDRAWAL_POLICY_V1.minimumGrossBaseUnits.toString() ||
+      status.baseUnitsPerNock !== WITHDRAWAL_POLICY_V1.baseUnitsPerNock.toString() ||
+      status.nicksPerNock !== WITHDRAWAL_POLICY_V1.nicksPerNock.toString() ||
+      status.baseUnitsPerNick !==
+        WITHDRAWAL_POLICY_V1.baseUnitsPerNick.toString() ||
+      status.bridgeFeeNicksPerStartedNock !==
+        WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock.toString() ||
+      status.maximumNicks !== WITHDRAWAL_POLICY_V1.maximumNicks.toString()
+    ) {
+      blockers.push("Backend numeric withdrawal policy does not match Iris.");
     }
   }
   return result(blockers, false, switchRequired);
@@ -211,6 +250,7 @@ export function useBaseToNockContractReadiness(
     }
     const controller = new AbortController();
     let active = true;
+    let timer: number | undefined;
     const load = async () => {
       setStatusLoading(true);
       try {
@@ -234,15 +274,17 @@ export function useBaseToNockContractReadiness(
           );
         }
       } finally {
-        if (active) setStatusLoading(false);
+        if (active) {
+          setStatusLoading(false);
+          timer = window.setTimeout(load, 15_000);
+        }
       }
     };
     void load();
-    const timer = window.setInterval(load, 15_000);
     return () => {
       active = false;
       controller.abort();
-      window.clearInterval(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [expectedNetwork, onExpectedChain]);
 
@@ -269,6 +311,7 @@ function parsePublicReadiness(value: unknown): PublicBridgeReadiness {
   if (
     candidate.schemaVersion !== 1 ||
     !Number.isSafeInteger(candidate.observedAt) ||
+    (candidate.observedAt ?? -1) < 0 ||
     typeof candidate.ready !== "boolean" ||
     !Number.isSafeInteger(candidate.chainId) ||
     !isAddress(candidate.nockTokenAddress ?? "") ||
@@ -280,7 +323,20 @@ function parsePublicReadiness(value: unknown): PublicBridgeReadiness {
     typeof candidate.withdrawalWireProtocol !== "string" ||
     typeof candidate.withdrawalPolicyId !== "string" ||
     typeof candidate.irisSdkVersion !== "string" ||
-    (candidate.reason !== null && typeof candidate.reason !== "string")
+    (candidate.reason !== null && typeof candidate.reason !== "string") ||
+    (candidate.baseObservedAt !== null &&
+      (!Number.isSafeInteger(candidate.baseObservedAt) ||
+        (candidate.baseObservedAt ?? -1) < 0)) ||
+    typeof candidate.operatorAdmissionEnabled !== "boolean" ||
+    typeof candidate.contractGateEnabled !== "boolean" ||
+    !isDecimal(candidate.minimumGrossNocks) ||
+    !isDecimal(candidate.minimumGrossNicks) ||
+    !isDecimal(candidate.minimumGrossBaseUnits) ||
+    !isDecimal(candidate.baseUnitsPerNock) ||
+    !isDecimal(candidate.nicksPerNock) ||
+    !isDecimal(candidate.baseUnitsPerNick) ||
+    !isDecimal(candidate.bridgeFeeNicksPerStartedNock) ||
+    !isDecimal(candidate.maximumNicks)
   ) {
     throw new Error("unsupported readiness response schema");
   }
@@ -290,6 +346,9 @@ function parsePublicReadiness(value: unknown): PublicBridgeReadiness {
     nockTokenAddress: getAddress(parsed.nockTokenAddress),
     messageInboxAddress: getAddress(parsed.messageInboxAddress),
   };
+}
+function isDecimal(value: unknown): value is string {
+  return typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value);
 }
 
 function result(

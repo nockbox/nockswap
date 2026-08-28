@@ -39,18 +39,42 @@ function nonEmpty(value: string | undefined): string | undefined {
   return value ? value : undefined;
 }
 
-function parsePositiveInteger(value: string | undefined): number | undefined {
+export function parsePublicStatusUrl(value: string | undefined): string | undefined {
   const raw = nonEmpty(value);
   if (!raw) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  try {
+    const url = new URL(raw);
+    const loopback =
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "[::1]";
+    if (
+      (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.search !== "" ||
+      url.hash !== ""
+    ) {
+      return undefined;
+    }
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+  const raw = nonEmpty(value);
+  if (!raw || !/^[1-9][0-9]*$/.test(raw)) return undefined;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function parseNonNegativeInteger(value: string | undefined): number | undefined {
   const raw = nonEmpty(value);
-  if (!raw) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  if (!raw || !/^(0|[1-9][0-9]*)$/.test(raw)) return undefined;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function parseList(value: string | undefined): string[] {
@@ -74,7 +98,7 @@ function buildBridgeNetworkConfig(
   const bridgeSignerPkhs = parseList(env.bridgeSignerPkhs);
   const bridgeThreshold = parsePositiveInteger(env.bridgeThreshold);
   const bridgeLockRoot = nonEmpty(env.bridgeLockRoot);
-  const publicStatusUrl = nonEmpty(env.publicStatusUrl);
+  const publicStatusUrl = parsePublicStatusUrl(env.publicStatusUrl);
   const withdrawalWireProtocol = nonEmpty(env.withdrawalWireProtocol);
   const withdrawalPolicyId = nonEmpty(env.withdrawalPolicyId);
   const irisSdkVersion = nonEmpty(env.irisSdkVersion);
@@ -89,6 +113,8 @@ function buildBridgeNetworkConfig(
     !messageInboxAddress ||
     bridgeSignerPkhs.length === 0 ||
     !bridgeThreshold ||
+    bridgeThreshold > bridgeSignerPkhs.length ||
+    new Set(bridgeSignerPkhs).size !== bridgeSignerPkhs.length ||
     !bridgeLockRoot ||
     !publicStatusUrl ||
     !withdrawalWireProtocol ||
