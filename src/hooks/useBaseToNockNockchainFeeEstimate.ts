@@ -7,6 +7,7 @@ import { resolveNockWithdrawalDestination } from "@/lib/nockToken";
 import { getBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
 import { formatNicksAsNock, type ExactNockAmount } from "@/lib/nockAmount";
 import { isNockAddress } from "@/lib/validators";
+import { BASE_TO_NOCK_WITHDRAWALS_ENABLED } from "@/lib/constants";
 
 export interface PublicWithdrawalQuoteV1 {
   schemaVersion: 1;
@@ -46,17 +47,22 @@ export function useBaseToNockNockchainFeeEstimate(
   const [loading, setLoading] = useState(false);
   const destination = destinationNockAddress?.trim() ?? "";
   const canFetch =
+    BASE_TO_NOCK_WITHDRAWALS_ENABLED &&
     amount !== null &&
     destination.length > 0 &&
     isNockAddress(destination) &&
-    Boolean(bridgeNetwork);
+    Boolean(bridgeNetwork?.publicStatusUrl);
 
   useLayoutEffect(() => {
     setLoading(canFetch);
   }, [canFetch]);
 
   useEffect(() => {
-    if (!amount || !isNockAddress(destination) || !bridgeNetwork) {
+    const publicStatusUrl =
+      BASE_TO_NOCK_WITHDRAWALS_ENABLED && bridgeNetwork
+        ? bridgeNetwork.publicStatusUrl
+        : undefined;
+    if (!amount || !isNockAddress(destination) || !publicStatusUrl) {
       setQuote(null);
       setError(null);
       setLoading(false);
@@ -70,7 +76,7 @@ export function useBaseToNockNockchainFeeEstimate(
       setLoading(true);
       try {
         const resolved = await resolveNockWithdrawalDestination(destination);
-        const url = new URL(bridgeNetwork.publicStatusUrl);
+        const url = new URL(publicStatusUrl);
         url.searchParams.set("quote", "1");
         url.searchParams.set("gross_amount_nicks", amount.nicks.toString());
         url.searchParams.set("destination_lock_root", resolved.lockRoot);

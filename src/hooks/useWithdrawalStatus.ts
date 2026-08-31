@@ -3,9 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { BridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
+import { BASE_TO_NOCK_WITHDRAWALS_ENABLED } from "@/lib/constants";
 import {
+  isDecimal,
+  isPublicResolution,
   transitionWithdrawalRecord,
   type PersistedWithdrawalV1,
+  type PublicWithdrawalResolution,
   type WithdrawalLifecycleStatus,
 } from "@/lib/withdrawalStore";
 
@@ -23,15 +27,7 @@ export interface PublicWithdrawalStatusV2 {
     | "terminal"
     | "reorg_hold"
     | "failed";
-  resolution:
-    | "found"
-    | "not_observed"
-    | "ambiguous_log"
-    | "malformed_burn"
-    | "below_policy"
-    | "reorged"
-    | "inconsistent"
-    | "compensated";
+  resolution: PublicWithdrawalResolution;
   revision: string;
   recoveryGeneration: number;
   terminalProof: boolean;
@@ -201,7 +197,9 @@ export function useWithdrawalStatus(
   const recordsRef = useRef(initialRecords);
   const [records, setRecords] = useState(initialRecords);
   const [publicHistory, setPublicHistory] = useState<PublicWithdrawalStatusV2[]>([]);
-  const [loading, setLoading] = useState(Boolean(account && network));
+  const [loading, setLoading] = useState(
+    Boolean(BASE_TO_NOCK_WITHDRAWALS_ENABLED && account && network?.publicStatusUrl)
+  );
   const [transientError, setTransientError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -210,7 +208,11 @@ export function useWithdrawalStatus(
   }, [initialRecords]);
 
   useEffect(() => {
-    if (!account || !network) {
+    const publicStatusUrl =
+      BASE_TO_NOCK_WITHDRAWALS_ENABLED && network
+        ? network.publicStatusUrl
+        : undefined;
+    if (!account || !publicStatusUrl) {
       setLoading(false);
       setPublicHistory([]);
       return;
@@ -226,7 +228,7 @@ export function useWithdrawalStatus(
       }
       setLoading(true);
       try {
-        const url = new URL(network.publicStatusUrl);
+        const url = new URL(publicStatusUrl);
         url.searchParams.set("history", "1");
         url.searchParams.set("account", account);
         url.searchParams.set("limit", "50");
@@ -359,23 +361,4 @@ function isPublicStatus(value: unknown): value is PublicWithdrawalStatusV2["stat
     value === "reorg_hold" ||
     value === "failed"
   );
-}
-
-function isPublicResolution(
-  value: unknown
-): value is PublicWithdrawalStatusV2["resolution"] {
-  return (
-    value === "found" ||
-    value === "not_observed" ||
-    value === "ambiguous_log" ||
-    value === "malformed_burn" ||
-    value === "below_policy" ||
-    value === "reorged" ||
-    value === "inconsistent" ||
-    value === "compensated"
-  );
-}
-
-function isDecimal(value: unknown): value is string {
-  return typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value);
 }

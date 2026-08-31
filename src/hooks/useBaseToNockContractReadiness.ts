@@ -10,6 +10,7 @@ import {
   getBridgeNetworkConfig,
   type BridgeNetworkConfig,
 } from "@/lib/bridgeNetworkConfig";
+import { BASE_TO_NOCK_WITHDRAWALS_ENABLED } from "@/lib/constants";
 
 const nockReadinessAbi = [
   {
@@ -210,7 +211,8 @@ export function useBaseToNockContractReadiness(
       isAddress(expectedNetwork.messageInboxAddress)
   );
   const onExpectedChain = expectedNetwork?.chainId === chainId;
-  const contractsEnabled = addressesValid && onExpectedChain;
+  const contractsEnabled =
+    addressesValid && onExpectedChain && BASE_TO_NOCK_WITHDRAWALS_ENABLED;
   const { data, isLoading, isFetching } = useReadContracts({
     contracts: expectedNetwork
       ? [
@@ -242,7 +244,10 @@ export function useBaseToNockContractReadiness(
   const [statusLoading, setStatusLoading] = useState(false);
 
   useEffect(() => {
-    if (!expectedNetwork || !onExpectedChain) {
+    const publicStatusUrl = BASE_TO_NOCK_WITHDRAWALS_ENABLED
+      ? expectedNetwork?.publicStatusUrl
+      : undefined;
+    if (!expectedNetwork || !onExpectedChain || !publicStatusUrl) {
       setStatus(null);
       setStatusError(null);
       setStatusLoading(false);
@@ -254,7 +259,7 @@ export function useBaseToNockContractReadiness(
     const load = async () => {
       setStatusLoading(true);
       try {
-        const response = await fetch(expectedNetwork.publicStatusUrl, {
+        const response = await fetch(publicStatusUrl, {
           signal: controller.signal,
           cache: "no-store",
         });

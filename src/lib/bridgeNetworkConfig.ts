@@ -1,5 +1,7 @@
 import type { Address } from "viem";
 
+import { BASE_TO_NOCK_WITHDRAWALS_ENABLED } from "./constants";
+
 export type BridgeNetworkId = "mainnet" | "bridge-dev";
 
 export interface BridgeNetworkConfig {
@@ -13,10 +15,10 @@ export interface BridgeNetworkConfig {
   bridgeLockRoot: string;
   nockchainConfirmationDepth: number;
   nockchainGrpcEndpoint?: string;
-  publicStatusUrl: string;
-  withdrawalWireProtocol: string;
-  withdrawalPolicyId: string;
-  irisSdkVersion: string;
+  publicStatusUrl?: string;
+  withdrawalWireProtocol?: string;
+  withdrawalPolicyId?: string;
+  irisSdkVersion?: string;
 }
 
 interface BridgeNetworkEnv {
@@ -115,11 +117,19 @@ function buildBridgeNetworkConfig(
     !bridgeThreshold ||
     bridgeThreshold > bridgeSignerPkhs.length ||
     new Set(bridgeSignerPkhs).size !== bridgeSignerPkhs.length ||
-    !bridgeLockRoot ||
-    !publicStatusUrl ||
-    !withdrawalWireProtocol ||
-    !withdrawalPolicyId ||
-    !irisSdkVersion
+    !bridgeLockRoot
+  ) {
+    return undefined;
+  }
+
+  // The withdrawal-facing facts are mandatory only for builds that enable the
+  // Base -> Nockchain route; a forward-only deployment stays valid without them.
+  if (
+    BASE_TO_NOCK_WITHDRAWALS_ENABLED &&
+    (!publicStatusUrl ||
+      !withdrawalWireProtocol ||
+      !withdrawalPolicyId ||
+      !irisSdkVersion)
   ) {
     return undefined;
   }
