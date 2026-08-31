@@ -1,7 +1,7 @@
 import { getAddress, isAddress } from "viem";
 import type { Address, Hex } from "viem";
 
-export const WITHDRAWAL_STORE_SCHEMA_VERSION = 1;
+const WITHDRAWAL_STORE_SCHEMA_VERSION = 1;
 const STORE_KEY = "nockswap.withdrawals.v1";
 const MAX_RECORDS = 50;
 
@@ -229,28 +229,6 @@ export function transitionWithdrawalRecord(
   return valid;
 }
 
-export function authorizeUnknownSubmissionRetry(
-  record: PersistedWithdrawalV1,
-  observedAt: number
-): PersistedWithdrawalV1 {
-  if (record.status !== "awaiting_base" && record.status !== "support") {
-    throw new Error("Only an unknown Base submission can be explicitly retried.");
-  }
-  return {
-    ...record,
-    retryAuthorizedAt: observedAt,
-    updatedAt: observedAt,
-    history: [
-      ...record.history,
-      {
-        status: record.status,
-        observedAt,
-        detail: "User explicitly authorized retry after unknown submission.",
-      },
-    ],
-  };
-}
-
 function loadAll(storage: StorageLike): PersistedWithdrawalV1[] {
   const text = storage.getItem(STORE_KEY);
   if (!text) return [];
@@ -414,7 +392,7 @@ function isRecoveryBlockHash(value: unknown): value is Hex {
   );
 }
 
-function isDecimal(value: unknown): value is string {
+export function isDecimal(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value);
 }
 
@@ -422,8 +400,19 @@ function isNullableDecimal(value: unknown): value is string | null {
   return value === null || isDecimal(value);
 }
 
+export type PublicWithdrawalResolution =
+  | "found"
+  | "not_observed"
+  | "ambiguous_log"
+  | "malformed_burn"
+  | "below_policy"
+  | "reorged"
+  | "inconsistent"
+  | "compensated";
 
-function isPublicResolution(value: unknown): value is string {
+export function isPublicResolution(
+  value: unknown
+): value is PublicWithdrawalResolution {
   return (
     value === "found" ||
     value === "not_observed" ||

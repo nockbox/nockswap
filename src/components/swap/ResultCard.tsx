@@ -300,7 +300,6 @@ export default function ResultCard({
           }}
         >
           <span
-            data-testid="result-status"
             style={{
               fontFamily: "var(--font-lora), serif",
               fontSize: isMobile ? 32 : 36,
@@ -1099,7 +1098,6 @@ export default function ResultCard({
           <div style={{ display: "flex", gap: 12, width: "100%" }}>
           {/* Cancel button */}
           <button
-            data-testid="result-cancel"
             onClick={onHomeClick}
             style={{
               display: "flex",
@@ -1134,7 +1132,6 @@ export default function ResultCard({
 
           {/* Confirm button */}
           <button
-            data-testid="result-confirm"
             onClick={onConfirm}
             disabled={confirmDisabled}
             style={{
@@ -1181,7 +1178,6 @@ export default function ResultCard({
         </div>
       ) : (
         <button
-          data-testid="result-home"
           onClick={onHomeClick}
           disabled={!onHomeClick}
           style={{

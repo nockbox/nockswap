@@ -19,7 +19,6 @@ import {
 } from "../src/lib/bridgeNetworkConfig";
 import {
   assertWithdrawalStorageAvailable,
-  authorizeUnknownSubmissionRetry,
   transitionWithdrawalRecord,
   loadWithdrawalRecords,
   persistWithdrawalRecord,
@@ -81,10 +80,6 @@ test("duplicate, corrupt, and unknown submissions fail safely", () => {
     () => persistWithdrawalRecord(storage, record),
     /Refusing to overwrite corrupt/
   );
-  const awaiting = { ...record, status: "awaiting_base" as const };
-  const authorized = authorizeUnknownSubmissionRetry(awaiting, 200);
-  assert.equal(authorized.retryAuthorizedAt, 200);
-  assert.match(authorized.history.at(-1)?.detail ?? "", /explicitly authorized/);
 });
 
 test("public lifecycle confirms only with complete Nock settlement proof", () => {

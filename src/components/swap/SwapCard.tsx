@@ -321,7 +321,6 @@ export default function SwapCard({
               >
                 <input
                   aria-label="Amount to send"
-                  data-testid="swap-amount"
                   type="text"
                   value={fromAmount}
                   onChange={(e) => {
@@ -502,7 +501,6 @@ export default function SwapCard({
 
           {/* Direction selector resets every amount and destination field. */}
           <button
-            data-testid="swap-direction"
             type="button"
             onClick={handleDirectionChange}
             aria-label={
@@ -577,7 +575,6 @@ export default function SwapCard({
                   value={toAmount}
                   readOnly
                   aria-label="Amount received after bridge fee"
-                  data-testid="swap-quote"
                   placeholder="0"
                   className="amount-input"
                   style={{

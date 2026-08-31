@@ -36,9 +36,7 @@ export interface BrowserDiagnostics {
   readonly console: ConsoleDiagnostic[];
   readonly network: NetworkDiagnostic[];
   captureCheckpoint(name: string): Promise<void>;
-  inspectLayout(): Promise<LayoutDiagnostic>;
   assertNoCriticalConsole(): void;
-  assertNoNetworkFailures(): void;
   assertViewportFits(): Promise<void>;
 }
 
@@ -150,22 +148,12 @@ export const test = walletTest.extend<{ diagnostics: BrowserDiagnostics }>({
           contentType: "image/png",
         });
       },
-      async inspectLayout() {
-        return inspectVisibleLayout(page);
-      },
       assertNoCriticalConsole() {
         if (consoleDiagnostics.length > 0) {
           throw new Error(
             `critical browser console diagnostics: ${JSON.stringify(
               consoleDiagnostics
             )}`
-          );
-        }
-      },
-      assertNoNetworkFailures() {
-        if (networkDiagnostics.length > 0) {
-          throw new Error(
-            `browser network diagnostics: ${JSON.stringify(networkDiagnostics)}`
           );
         }
       },
