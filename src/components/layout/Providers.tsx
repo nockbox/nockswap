@@ -2,8 +2,12 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { WagmiProvider } from "wagmi";
+import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { ThemeProvider } from "./ThemeProvider";
 import { WalletProvider } from "@/contexts/WalletContext";
+import { wagmiConfig } from "@/lib/wagmiConfig";
+import { E2eWalletProbe } from "@/components/e2e/E2eWalletProbe";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -19,10 +23,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <WalletProvider>
-        <ThemeProvider>{children}</ThemeProvider>
-      </WalletProvider>
-    </QueryClientProvider>
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider>
+          <WalletProvider>
+            <ThemeProvider>
+              {children}
+              <E2eWalletProbe />
+            </ThemeProvider>
+          </WalletProvider>
+        </RainbowKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }

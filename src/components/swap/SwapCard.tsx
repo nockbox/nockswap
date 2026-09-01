@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
+import {
+  useAccount,
+  useBalance,
+  useReadContract,
+  useSwitchChain,
+} from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { usePrice } from "@/hooks/usePrice";
 import { useWallet } from "@/hooks/useWallet";
 import { useSwapForm } from "@/hooks/useSwapForm";
@@ -10,25 +17,46 @@ import {
   TransactionPreview,
   BridgeStatus,
 } from "@/hooks/useBridge";
+import { useBaseToNockContractReadiness } from "@/hooks/useBaseToNockContractReadiness";
 import {
   NOCK_COINGECKO_ID,
   ASSETS,
   IRIS_CHROME_STORE_URL,
   PROTOCOL_FEE_DISPLAY,
+  MIN_BRIDGE_AMOUNT_NICKS,
   MIN_BRIDGE_AMOUNT_NOCK,
+  BASE_TO_NOCK_WITHDRAWALS_ENABLED,
 } from "@/lib/constants";
 import { isNockAddress, isEvmAddress } from "@/lib/validators";
 import { getSwapCardTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { parseAmount } from "@/lib/utils";
+import type { ExactNockAmount } from "@/lib/nockAmount";
+import { resolveNockWithdrawalDestination } from "@/lib/nockToken";
+import { getPreferredBridgeNetworkConfig } from "@/lib/bridgeNetworkConfig";
+
+type SwapDirection = "nock_to_base" | "base_to_nock";
+
+const erc20BalanceAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
 
 interface SwapCardProps {
   isDarkMode?: boolean;
   onSwapError?: (error: string) => void;
   onPrepareSuccess?: (preview: TransactionPreview) => void;
+  onPrepareBurnSuccess?: (payload: {
+    amount: ExactNockAmount;
+    destinationNockAddress: string;
+  }) => void;
   prepareTransaction: (
     destinationAddress: string,
-    amountInNocks: number
+    amountInNicks: bigint
   ) => Promise<TransactionPreview>;
   bridgeStatus: BridgeStatus;
 }
@@ -37,58 +65,86 @@ export default function SwapCard({
   isDarkMode = false,
   onSwapError,
   onPrepareSuccess,
+  onPrepareBurnSuccess,
   prepareTransaction,
   bridgeStatus,
 }: SwapCardProps) {
   const [receivingAddress, setReceivingAddress] = useState("");
-  // Currently only supports Nockchain -> Base direction
-  const isNockchainToBase = true;
+  const [direction, setDirection] =
+    useState<SwapDirection>("nock_to_base");
+  const isNockchainToBase = direction === "nock_to_base";
   const [showAddressError, setShowAddressError] = useState(false);
   const [showAmountError, setShowAmountError] = useState(false);
 
   // Fetch NOCK price from CoinGecko
   const { data: priceData, isLoading: isPriceLoading } =
     usePrice(NOCK_COINGECKO_ID);
-  const nockPrice = priceData?.usd ?? 0;
+  const nockPrice = priceData?.usd ?? "0";
 
   // Swap form state and handlers
   const {
     fromAmount,
     toAmount,
-    setFromAmount,
-    setToAmount,
-    isFromUsdMode,
-    isToUsdMode,
+    exactFromAmount,
+    amountError,
     handleFromAmountChange,
-    handleToAmountChange,
-    handleFromToggle,
-    handleToToggle,
     handleAmountBlur,
+    reset: resetForm,
     fromSecondary,
     toSecondary,
-  } = useSwapForm({ nockPrice });
+  } = useSwapForm({
+    nockPrice,
+    bridgeFeeRounding: isNockchainToBase ? "floor" : "ceil",
+  });
 
-  // Wallet connection
-  const { isInstalled, isConnected, isConnecting, connect } = useWallet();
+  // Direction-specific wallet connection
+  const {
+    isInstalled: isIrisInstalled,
+    isConnected: isIrisConnected,
+    isConnecting: isIrisConnecting,
+    connect: connectIris,
+  } = useWallet();
+  const {
+    address: baseAddress,
+    isConnected: isBaseConnected,
+  } = useAccount();
+  const { switchChain } = useSwitchChain();
+  const expectedBaseNetwork = useMemo(
+    () => getPreferredBridgeNetworkConfig(),
+    []
+  );
+  const baseReadiness = useBaseToNockContractReadiness(
+    expectedBaseNetwork?.chainId
+  );
+  const { data: nativeBalance, isLoading: nativeBalanceLoading } = useBalance({
+    address: baseAddress,
+    chainId: expectedBaseNetwork?.chainId,
+    query: { enabled: Boolean(baseAddress && expectedBaseNetwork) },
+  });
+  const { data: tokenBalance, isLoading: tokenBalanceLoading } = useReadContract({
+    address: expectedBaseNetwork?.nockTokenAddress,
+    abi: erc20BalanceAbi,
+    functionName: "balanceOf",
+    args: baseAddress ? [baseAddress] : undefined,
+    chainId: expectedBaseNetwork?.chainId,
+    query: { enabled: Boolean(baseAddress && expectedBaseNetwork) },
+  });
+  const { openConnectModal } = useConnectModal();
 
   // Bridge configuration check
   const { isBridgeConfigured } = useBridge();
 
-  // Balance check not currently doable
-  // const hasInsufficientFunds = fromAmount.trim().length > 0 && parseAmount(fromAmount) > balance;
-  const hasInsufficientFunds = false;
+  const balancesLoading = nativeBalanceLoading || tokenBalanceLoading;
+  const hasInsufficientFunds =
+    exactFromAmount !== null &&
+    tokenBalance !== undefined &&
+    tokenBalance < exactFromAmount.baseUnits;
+  const hasInsufficientGas =
+    nativeBalance !== undefined && nativeBalance.value === 0n;
 
-  // Check if amount is below minimum bridge amount
-  const parsedFromAmount = parseAmount(fromAmount);
-  // Convert to NOCK if in USD mode
-  const amountInNock =
-    isFromUsdMode && nockPrice > 0
-      ? parsedFromAmount / nockPrice
-      : parsedFromAmount;
   const isBelowMinimum =
-    fromAmount.trim().length > 0 &&
-    amountInNock > 0 &&
-    amountInNock < MIN_BRIDGE_AMOUNT_NOCK;
+    exactFromAmount !== null &&
+    exactFromAmount.nicks < MIN_BRIDGE_AMOUNT_NICKS;
 
   // Address validation
   const isAddressValid =
@@ -100,25 +156,53 @@ export default function SwapCard({
 
   const theme = getSwapCardTheme(isDarkMode);
 
+  const handleDirectionChange = () => {
+    setDirection((current) =>
+      current === "nock_to_base" ? "base_to_nock" : "nock_to_base"
+    );
+    setReceivingAddress("");
+    setShowAddressError(false);
+    setShowAmountError(false);
+    resetForm();
+  };
+
   const handleSwap = async () => {
+    if (!isNockchainToBase && !BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
+      onSwapError?.(
+        "Base-to-Nockchain withdrawals are not enabled for this release."
+      );
+      return;
+    }
+
     // Validate address before proceeding
     if (isAddressValid === false || receivingAddress.trim().length === 0) {
       setShowAddressError(true);
       return;
     }
 
-    // Get the amount in NOCK (convert from USD if needed)
-    const nockAmount = isFromUsdMode
-      ? parseAmount(fromAmount) / nockPrice
-      : parseAmount(fromAmount);
-
-    if (nockAmount <= 0) {
+    if (!exactFromAmount || amountError) {
+      setShowAmountError(true);
       return;
     }
 
     try {
+      if (!isNockchainToBase) {
+        const destination = await resolveNockWithdrawalDestination(
+          receivingAddress
+        );
+        setReceivingAddress(destination.normalizedDestination);
+        onPrepareBurnSuccess?.({
+          amount: exactFromAmount,
+          destinationNockAddress: destination.normalizedDestination,
+        });
+        return;
+      }
+
       // Prepare transaction and show confirmation screen
-      const preview = await prepareTransaction(receivingAddress, nockAmount);
+      const preview = await prepareTransaction(
+        receivingAddress,
+        exactFromAmount.nicks
+      );
       if (preview && onPrepareSuccess) {
         onPrepareSuccess(preview);
       }
@@ -138,6 +222,8 @@ export default function SwapCard({
 
   return (
     <div
+      data-testid="swap-card"
+      data-direction={direction}
       style={{
         display: "flex",
         width: "100%",
@@ -233,22 +319,8 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                {isFromUsdMode && (
-                  <span
-                    style={{
-                      fontFamily: "var(--font-lora), serif",
-                      fontSize: 36,
-                      fontWeight: 600,
-                      lineHeight: "40px",
-                      letterSpacing: -1.44,
-                      color: theme.textPrimary,
-                      opacity: fromAmount ? 1 : 0.4,
-                    }}
-                  >
-                    $
-                  </span>
-                )}
                 <input
+                  aria-label="Amount to send"
                   type="text"
                   value={fromAmount}
                   onChange={(e) => {
@@ -256,8 +328,10 @@ export default function SwapCard({
                     setShowAmountError(false);
                   }}
                   onBlur={() => {
-                    handleAmountBlur(fromAmount, setFromAmount);
-                    if (isBelowMinimum) setShowAmountError(true);
+                    handleAmountBlur();
+                    if (amountError || isBelowMinimum) {
+                      setShowAmountError(true);
+                    }
                   }}
                   placeholder="0"
                   className="amount-input"
@@ -320,7 +394,7 @@ export default function SwapCard({
                         letterSpacing: 0.13,
                       }}
                     >
-                      Nockchain
+                      {isNockchainToBase ? "Nockchain" : "Base"}
                     </span>
                   </div>
                   <div
@@ -352,12 +426,16 @@ export default function SwapCard({
                         border: `2px solid ${theme.networkBadgeBorder}`,
                         overflow: "hidden",
                         boxSizing: "border-box",
-                        background: "#1a1a1a",
+                        background: isNockchainToBase ? "#1a1a1a" : "#fff",
                       }}
                     >
                       <Image
-                        src={ASSETS.nockchainIcon}
-                        alt="Nockchain"
+                        src={
+                          isNockchainToBase
+                            ? ASSETS.nockchainIcon
+                            : ASSETS.baseLogo
+                        }
+                        alt={isNockchainToBase ? "Nockchain" : "Base"}
                         width={18}
                         height={18}
                         style={{
@@ -377,18 +455,7 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                <button
-                  onClick={handleFromToggle}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center" }}>
                   <span
                     style={{
                       color: theme.textPrimary,
@@ -408,18 +475,11 @@ export default function SwapCard({
                       fromSecondary
                     )}
                   </span>
-                  <Image
-                    src={ASSETS.upDownArrows2}
-                    alt="Toggle USD/NOCK"
-                    width={14}
-                    height={14}
-                    style={{
-                      opacity: 0.5,
-                    }}
-                  />
-                </button>
-                {showAmountError && isBelowMinimum && (
+                </div>
+                {showAmountError && (amountError || isBelowMinimum) && (
                   <span
+                    data-testid="swap-amount-error"
+                    role="alert"
                     style={{
                       color: theme.error,
                       textAlign: "right",
@@ -431,15 +491,23 @@ export default function SwapCard({
                       letterSpacing: 0.13,
                     }}
                   >
-                    Minimum {MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK
+                    {amountError ??
+                      `Minimum ${MIN_BRIDGE_AMOUNT_NOCK.toLocaleString()} NOCK`}
                   </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Swap direction indicator (disabled - one-way only for now) */}
-          <div
+          {/* Direction selector resets every amount and destination field. */}
+          <button
+            type="button"
+            onClick={handleDirectionChange}
+            aria-label={
+              isNockchainToBase
+                ? "Switch to Base to Nockchain"
+                : "Switch to Nockchain to Base"
+            }
             style={{
               display: "flex",
               padding: 8,
@@ -448,18 +516,21 @@ export default function SwapCard({
               borderRadius: 32,
               background: theme.swapButtonBg,
               border: "none",
+              cursor: "pointer",
             }}
           >
             <Image
               src={ASSETS.downArrow}
-              alt="To"
+              alt=""
               width={24}
               height={24}
               style={{
                 filter: isDarkMode ? "invert(1)" : "none",
+                transform: isNockchainToBase ? "none" : "rotate(180deg)",
+                transition: "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
               }}
             />
-          </div>
+          </button>
 
           {/* TO input wrapper + Receiving address */}
           <div
@@ -499,26 +570,11 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                {isToUsdMode && (
-                  <span
-                    style={{
-                      fontFamily: "var(--font-lora), serif",
-                      fontSize: 36,
-                      fontWeight: 600,
-                      lineHeight: "40px",
-                      letterSpacing: -1.44,
-                      color: theme.textPrimary,
-                      opacity: toAmount ? 1 : 0.4,
-                    }}
-                  >
-                    $
-                  </span>
-                )}
                 <input
                   type="text"
                   value={toAmount}
-                  onChange={(e) => handleToAmountChange(e.target.value)}
-                  onBlur={() => handleAmountBlur(toAmount, setToAmount)}
+                  readOnly
+                  aria-label="Amount received after bridge fee"
                   placeholder="0"
                   className="amount-input"
                   style={{
@@ -580,7 +636,7 @@ export default function SwapCard({
                         letterSpacing: 0.13,
                       }}
                     >
-                      Base
+                      {isNockchainToBase ? "Base" : "Nockchain"}
                     </span>
                   </div>
                   <div
@@ -612,12 +668,16 @@ export default function SwapCard({
                         border: `2px solid ${theme.networkBadgeBorder}`,
                         overflow: "hidden",
                         boxSizing: "border-box",
-                        background: "#fff",
+                        background: isNockchainToBase ? "#fff" : "#1a1a1a",
                       }}
                     >
                       <Image
-                        src={ASSETS.baseLogo}
-                        alt="Base"
+                        src={
+                          isNockchainToBase
+                            ? ASSETS.baseLogo
+                            : ASSETS.nockchainIcon
+                        }
+                        alt={isNockchainToBase ? "Base" : "Nockchain"}
                         width={18}
                         height={18}
                         style={{
@@ -637,18 +697,7 @@ export default function SwapCard({
                   width: "100%",
                 }}
               >
-                <button
-                  onClick={handleToToggle}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center" }}>
                   <span
                     style={{
                       color: theme.textPrimary,
@@ -668,16 +717,7 @@ export default function SwapCard({
                       toSecondary
                     )}
                   </span>
-                  <Image
-                    src={ASSETS.upDownArrows2}
-                    alt="Toggle USD/NOCK"
-                    width={14}
-                    height={14}
-                    style={{
-                      opacity: 0.5,
-                    }}
-                  />
-                </button>
+                </div>
                 <span
                   style={{
                     color: theme.textPrimary,
@@ -738,6 +778,7 @@ export default function SwapCard({
                 </span>
                 {showAddressError ? (
                   <span
+                    data-testid="swap-destination-error"
                     style={{
                       color: theme.error,
                       textAlign: "right",
@@ -800,6 +841,12 @@ export default function SwapCard({
                 )}
               </div>
               <input
+                aria-label={
+                  isNockchainToBase
+                    ? "Base receiving address"
+                    : "Nockchain receiving address"
+                }
+                data-testid="swap-destination"
                 type="text"
                 value={receivingAddress}
                 onChange={(e) => handleAddressChange(e.target.value)}
@@ -885,14 +932,57 @@ export default function SwapCard({
 
         {/* CTA Button */}
         {(() => {
-        // Determine button state and text
-        let buttonText = "Swap with Iris";
+        let buttonText = isNockchainToBase
+          ? "Review bridge"
+          : "Review withdrawal";
         let buttonAction: () => void = handleSwap;
         let isDisabled = false;
         let isLoading = false;
 
-        // Bridge status takes priority when active
-        if (bridgeStatus === "preparing") {
+        const gateIncompleteForm = () => {
+          const hasAmount = fromAmount.trim().length > 0;
+          const hasAddress = receivingAddress.trim().length > 0;
+          isDisabled =
+            !hasAmount ||
+            !hasAddress ||
+            exactFromAmount === null ||
+            amountError !== null ||
+            isBelowMinimum;
+        };
+
+        if (!isNockchainToBase) {
+          if (!BASE_TO_NOCK_WITHDRAWALS_ENABLED) {
+            buttonText = "Base withdrawals unavailable";
+            isDisabled = true;
+          } else if (!isBaseConnected) {
+            buttonText = "Connect Base wallet";
+            buttonAction = openConnectModal ?? (() => undefined);
+            isDisabled = openConnectModal === undefined;
+          } else if (baseReadiness.switchRequired && expectedBaseNetwork) {
+            buttonText = `Switch to ${expectedBaseNetwork.label}`;
+            buttonAction = () =>
+              switchChain({ chainId: expectedBaseNetwork.chainId });
+          } else if (baseReadiness.loading) {
+            buttonText = baseReadiness.reason ?? "Checking readiness...";
+            isDisabled = true;
+            isLoading = true;
+          } else if (!baseReadiness.ready) {
+            buttonText = baseReadiness.reason ?? "Bridge is not ready";
+            isDisabled = true;
+          } else if (balancesLoading) {
+            buttonText = "Checking balances...";
+            isDisabled = true;
+            isLoading = true;
+          } else if (hasInsufficientFunds) {
+            buttonText = "Insufficient wrapped NOCK balance";
+            isDisabled = true;
+          } else if (hasInsufficientGas) {
+            buttonText = "Insufficient ETH for Base gas";
+            isDisabled = true;
+          } else {
+            gateIncompleteForm();
+          }
+        } else if (bridgeStatus === "preparing") {
           buttonText = "Preparing...";
           isDisabled = true;
           isLoading = true;
@@ -901,30 +991,29 @@ export default function SwapCard({
           isDisabled = true;
           isLoading = true;
         } else if (bridgeStatus === "awaiting_signature") {
-          buttonText = "Approve in Wallet...";
+          buttonText = "Approve in Iris...";
           isDisabled = true;
           isLoading = true;
-        } else if (!isInstalled) {
+        } else if (!isIrisInstalled) {
           buttonText = "Install Iris Wallet";
           buttonAction = () => {
             window.open(IRIS_CHROME_STORE_URL, "_blank");
           };
-        } else if (!isConnected) {
-          buttonText = isConnecting ? "Connecting..." : "Iris Connect";
-          buttonAction = connect;
-          isDisabled = isConnecting;
+        } else if (!isIrisConnected) {
+          buttonText = isIrisConnecting ? "Connecting..." : "Connect Iris";
+          buttonAction = connectIris;
+          isDisabled = isIrisConnecting;
         } else if (!isBridgeConfigured) {
-          buttonText = "Bridge Error";
+          buttonText = "Bridge configuration unavailable";
           isDisabled = true;
         } else {
-          // Connected - check if form is complete
-          const hasAmount = fromAmount.trim().length > 0;
-          const hasAddress = receivingAddress.trim().length > 0;
-          isDisabled = !hasAmount || !hasAddress || isBelowMinimum;
+          gateIncompleteForm();
         }
 
         return (
           <button
+            aria-busy={isLoading}
+            data-testid="swap-primary-action"
             onClick={buttonAction}
             disabled={isDisabled || isLoading}
             style={{
@@ -942,7 +1031,7 @@ export default function SwapCard({
               boxSizing: "border-box",
             }}
           >
-            {!isConnected && !isConnecting && (
+            {isNockchainToBase && !isIrisConnected && !isIrisConnecting && (
               <Image
                 src="/assets/iris-logo.svg"
                 alt="Iris"

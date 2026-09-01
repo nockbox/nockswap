@@ -1,22 +1,48 @@
-// Bridge fee: 195 nicks per 65536 nicks (~0.3%)
-export const PROTOCOL_FEE_NICKS_PER_NOCK = 195n;
+import { WITHDRAWAL_POLICY_V1 } from "@nockbox/iris-sdk";
+
 export const PROTOCOL_FEE_DISPLAY = "0.3%";
+export const PROTOCOL_FEE_NICKS_PER_NOCK =
+  WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock;
+export const NICKS_PER_NOCK = WITHDRAWAL_POLICY_V1.nicksPerNock;
 
-export const MIN_BRIDGE_AMOUNT_NOCK = 100_000;
+export function toWholeNockNicks(nicks: bigint): bigint {
+  if (nicks <= 0n) {
+    return 0n;
+  }
+  return (nicks / NICKS_PER_NOCK) * NICKS_PER_NOCK;
+}
 
-// Zorp Bridge 3-of-5 Multisig Configuration
-export const ZORP_BRIDGE_THRESHOLD = 3;
-export const ZORP_BRIDGE_ADDRESSES: string[] = [
-  "AD6Mw1QUnPUrnVpyj2gW2jT6Jd6WsuZQmPn79XpZoFEocuvV12iDkvh", // Zorp #1
-  "6KrZT5hHLY1fva9AUDeGtZu5Jznm4RDLYfjcGjuU49nWoNym5ZeX5X5", // Zorp #2
-  "CDLzgKWAKFXYABkuQaMwbttDSTDMh3Wy2Eoq2XiArsyxn7vScNHupBb", // Pero
-  "7E47xYNVEyt7jGmLsiChUHnyw88AfBvzJfXfEQkPmMo2ZWsdcPudwmV", // Nockbox
-  "3xSyK6RQUaYzE8YDUamkpKRHALxaYo8E7eppawwE4sP35c3PASc6koq", // SWPS
-];
-// Expected lock root for bridge outputs (derived from 3-of-5 multisig above)
-export const ZORP_BRIDGE_LOCK_ROOT =
-  "AcsPkuhXQoGeEsF91yynpm1kcW17PQ2Z1MEozgx7YnDPkZwrtzLuuqd";
+export function bridgeFeeNicksFloor(amountInNicks: bigint): bigint {
+  if (amountInNicks <= 0n) {
+    return 0n;
+  }
+  return (
+    (amountInNicks / NICKS_PER_NOCK) *
+    WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock
+  );
+}
 
+export function bridgeFeeNicksCeil(amountInNicks: bigint): bigint {
+  if (amountInNicks <= 0n) {
+    return 0n;
+  }
+  return (
+    ((amountInNicks + NICKS_PER_NOCK - 1n) / NICKS_PER_NOCK) *
+    WITHDRAWAL_POLICY_V1.bridgeFeeNicksPerStartedNock
+  );
+}
+
+export const MIN_BRIDGE_AMOUNT_NOCK =
+  WITHDRAWAL_POLICY_V1.minimumGrossNocks;
+export const MIN_BRIDGE_AMOUNT_NICKS =
+  WITHDRAWAL_POLICY_V1.minimumGrossNicks;
+
+/**
+ * Explicit deployment gate for the Base-to-Nockchain withdrawal path. Missing,
+ * malformed, and production-default configuration remain disabled.
+ */
+export const BASE_TO_NOCK_WITHDRAWALS_ENABLED =
+  process.env.NEXT_PUBLIC_BASE_TO_NOCK_WITHDRAWALS_ENABLED === "true";
 export const NOCK_COINGECKO_ID = "nockchain";
 
 // Iris Wallet

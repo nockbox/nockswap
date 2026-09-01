@@ -42,3 +42,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# superseded local SDK packing attempts; 0.3.3 is the committed immutable artifact
+/vendor/iris-sdk-0.3.0.json
+/vendor/nockbox-iris-sdk-0.3.0.tgz

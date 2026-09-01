@@ -168,6 +168,23 @@ export default function LearnMoreModal({
             hours.
           </div>
 
+          {/* Debridge note */}
+          <div
+            style={{
+              width: "100%",
+              fontFamily: "var(--font-inter), sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              lineHeight: "22px",
+              letterSpacing: 0.15,
+              color: theme.textColor,
+            }}
+          >
+            <strong>Debridge flow:</strong> NockSwap only initiates and confirms
+            transactions on the Base side. After that handoff, bridge settlement
+            and final execution are handled by Nockchain and bridge operators.
+          </div>
+
           {/* Divider */}
           <div
             style={{

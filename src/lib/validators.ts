@@ -13,7 +13,7 @@ export function isNockAddress(s: string): boolean {
     if (trimmed.length === 0) return false;
 
     const bytes = base58.decode(trimmed);
-    return bytes.length === 40;
+    return bytes.length === 40 && base58.encode(bytes) === trimmed;
   } catch {
     return false;
   }
